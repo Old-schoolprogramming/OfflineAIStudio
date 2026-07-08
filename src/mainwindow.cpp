@@ -12,6 +12,7 @@ MainWindow::MainWindow(QWidget *parent)
     
     setWindowTitle("Offline AI Studio");
     setMinimumSize(1024, 768);
+    resize(1280, 800);
 }
 
 MainWindow::~MainWindow()
