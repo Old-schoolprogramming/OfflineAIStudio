@@ -26,8 +26,8 @@ MainWindow::~MainWindow()
 void MainWindow::setupCoreComponents()
 {
     m_llmClient = new LlmClient(this);
-    m_llmClient->setApiUrl("http://localhost:8080/v1/chat/completions");
-    m_llmClient->setModelName("model");
+    m_llmClient->setApiUrl("https://api.openai.com/v1/chat/completions");
+    m_llmClient->setModelName("gpt-4o-mini");
 
     m_orchestrator = new Orchestrator(this);
     m_orchestrator->setLlmClient(m_llmClient);
@@ -279,6 +279,7 @@ void MainWindow::onAgentSelected(const QString& agentName)
 void MainWindow::onSettingsChanged()
 {
     m_llmClient->setApiUrl(m_settingsPanel->apiUrl());
+    m_llmClient->setApiKey(m_settingsPanel->apiKey());
     m_llmClient->setModelName(m_settingsPanel->modelName());
     m_llmClient->setMaxTokens(m_settingsPanel->maxTokens());
     m_llmClient->setTemperature(m_settingsPanel->temperature());

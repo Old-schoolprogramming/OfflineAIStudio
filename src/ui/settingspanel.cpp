@@ -14,11 +14,16 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     QFormLayout* formLayout = new QFormLayout();
     formLayout->setSpacing(6);
 
-    m_apiUrlEdit = new QLineEdit("http://localhost:8080/v1/chat/completions", this);
+    m_apiUrlEdit = new QLineEdit("https://api.openai.com/v1/chat/completions", this);
     m_apiUrlEdit->setPlaceholderText("API地址");
     formLayout->addRow("API地址:", m_apiUrlEdit);
 
-    m_modelNameEdit = new QLineEdit("model", this);
+    m_apiKeyEdit = new QLineEdit(this);
+    m_apiKeyEdit->setPlaceholderText("API Key (留空则不使用)");
+    m_apiKeyEdit->setEchoMode(QLineEdit::Password);
+    formLayout->addRow("API Key:", m_apiKeyEdit);
+
+    m_modelNameEdit = new QLineEdit("gpt-4o-mini", this);
     m_modelNameEdit->setPlaceholderText("模型名称");
     formLayout->addRow("模型名称:", m_modelNameEdit);
 
@@ -56,6 +61,11 @@ QString SettingsPanel::modelName() const
     return m_modelNameEdit->text();
 }
 
+QString SettingsPanel::apiKey() const
+{
+    return m_apiKeyEdit->text();
+}
+
 int SettingsPanel::maxTokens() const
 {
     return m_maxTokensSpin->value();
@@ -74,6 +84,11 @@ void SettingsPanel::setApiUrl(const QString& url)
 void SettingsPanel::setModelName(const QString& name)
 {
     m_modelNameEdit->setText(name);
+}
+
+void SettingsPanel::setApiKey(const QString& apiKey)
+{
+    m_apiKeyEdit->setText(apiKey);
 }
 
 void SettingsPanel::setMaxTokens(int tokens)

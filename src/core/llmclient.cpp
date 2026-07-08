@@ -39,6 +39,11 @@ void LlmClient::setTemperature(double temperature)
     m_temperature = temperature;
 }
 
+void LlmClient::setApiKey(const QString& apiKey)
+{
+    m_apiKey = apiKey;
+}
+
 QString LlmClient::apiUrl() const
 {
     return m_apiUrl;
@@ -59,12 +64,21 @@ double LlmClient::temperature() const
     return m_temperature;
 }
 
+QString LlmClient::apiKey() const
+{
+    return m_apiKey;
+}
+
 void LlmClient::sendPrompt(const QString& prompt, const QString& systemPrompt)
 {
     QUrl apiUrl(m_apiUrl);
     QNetworkRequest networkRequest;
     networkRequest.setUrl(apiUrl);
     networkRequest.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    if (!m_apiKey.isEmpty()) {
+        networkRequest.setRawHeader("Authorization", ("Bearer " + m_apiKey).toUtf8());
+    }
 
     QJsonObject json;
     json["model"] = m_modelName;
