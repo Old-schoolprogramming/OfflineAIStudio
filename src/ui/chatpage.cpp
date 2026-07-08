@@ -80,7 +80,7 @@ void ChatPage::setupUI()
 void ChatPage::setupSidebar()
 {
     m_sidebar = new QWidget(this);
-    m_sidebar->setFixedWidth(260);
+    m_sidebar->setFixedWidth(300);
     m_sidebar->setObjectName("chatSidebar");
 
     QVBoxLayout* sidebarLayout = new QVBoxLayout(m_sidebar);
@@ -258,32 +258,32 @@ void ChatPage::applyTheme()
     QString priSub = tm->primarySubtle().name();
 
     m_sidebar->setStyleSheet(QString(
-        "QWidget#chatSidebar { background-color: %1; border-right: 1px solid %4; }"
+        "QWidget#chatSidebar { background-color: %1; border-right: 1px solid %2; }"
         "QWidget#sidebarHeader { background-color: %1; }"
-        "QWidget#statusWidget { background-color: %1; border-top: 1px solid %4; }"
-        "QLabel#sidebarTitle { color: %6; }"
-        "QLabel#statusLabel { color: %8; }"
+        "QWidget#statusWidget { background-color: %1; border-top: 1px solid %2; }"
+        "QLabel#sidebarTitle { color: %3; }"
+        "QLabel#statusLabel { color: %4; }"
         "QLabel#statusDot { background-color: #22C55E; border-radius: 4px; }"
         "QListWidget#conversationList { background-color: %1; border: none; outline: none; }"
-        "QListWidget#conversationList::item { border-radius: 8px; padding: 10px 12px; margin: 2px 8px; color: %6; }"
-        "QListWidget#conversationList::item:hover { background-color: %3; }"
-        "QListWidget#conversationList::item:selected { background-color: %9; color: %6; border-left: 2px solid %5; }"
-        "QFrame { border-color: %4; }"
-    ).arg(bg2, bg, bg3, bdr, pri, txtPri, txtSec, txtTer, priSub));
+        "QListWidget#conversationList::item { border-radius: 8px; padding: 10px 12px; margin: 2px 8px; color: %3; }"
+        "QListWidget#conversationList::item:hover { background-color: %5; }"
+        "QListWidget#conversationList::item:selected { background-color: %6; color: %3; border-left: 2px solid %7; }"
+        "QFrame { border-color: %2; }"
+    ).arg(bg2).arg(bdr).arg(txtPri).arg(txtTer).arg(bg3).arg(priSub).arg(pri));
 
     m_chatArea->setStyleSheet(QString(
         "QWidget#chatArea { background-color: %1; }"
-        "QWidget#inputWidget { background-color: %1; border-top: 1px solid %4; }"
-        "QLineEdit#messageInput { background-color: %2; color: %6; border: 1px solid %4; border-radius: 8px; padding: 8px 14px; font-size: 14px; }"
+        "QWidget#inputWidget { background-color: %1; border-top: 1px solid %2; }"
+        "QLineEdit#messageInput { background-color: %3; color: %4; border: 1px solid %2; border-radius: 8px; padding: 8px 14px; font-size: 14px; }"
         "QLineEdit#messageInput:focus { border-color: %5; }"
         "QPushButton#primaryButton { background-color: %5; color: white; border-radius: 8px; padding: 6px 16px; font-weight: 500; }"
-        "QPushButton#primaryButton:hover { background-color: %7; }"
+        "QPushButton#primaryButton:hover { background-color: #2563EB; }"
         "QPushButton#stopButton { background-color: #EF4444; color: white; border-radius: 8px; padding: 6px 16px; font-weight: 500; }"
         "QPushButton#stopButton:hover { background-color: #DC2626; }"
-        "QPushButton#iconButton { background-color: transparent; color: %8; border-radius: 8px; font-size: 13px; }"
-        "QPushButton#iconButton:hover { background-color: %3; }"
-        "QLabel#modelSelector { color: %7; border-color: %4; background-color: %2; }"
-    ).arg(bg, bg2, bg3, bdr, pri, txtPri, pri, txtSec, txtTer));
+        "QPushButton#iconButton { background-color: transparent; color: %6; border-radius: 8px; font-size: 13px; }"
+        "QPushButton#iconButton:hover { background-color: %7; }"
+        "QLabel#modelSelector { color: %5; border-color: %2; background-color: %3; }"
+    ).arg(bg).arg(bdr).arg(bg2).arg(txtPri).arg(pri).arg(txtSec).arg(bg3));
 
     // 更新工具栏图标
     QColor iconColor = ThemeManager::instance()->textSecondary();
@@ -304,56 +304,32 @@ void ChatPage::updateConversationList()
     ThemeManager* tm = ThemeManager::instance();
     QString txtPri = tm->textPrimary().name();
     QString txtTer = tm->textTertiary().name();
-    QString pri = tm->primary().name();
-    QString priSub = tm->primarySubtle().name();
+
+    m_conversationList->setWordWrap(true);
+    m_conversationList->setTextElideMode(Qt::ElideMiddle);
 
     for (int i = 0; i < m_conversations.size(); ++i) {
         const auto& conv = m_conversations[i];
         QListWidgetItem* item = new QListWidgetItem(m_conversationList);
         item->setData(Qt::UserRole, i);
-        item->setSizeHint(QSize(m_conversationList->width(), 56));
+        item->setSizeHint(QSize(0, 52));
 
-        QPushButton* btn = new QPushButton(m_conversationList);
-        btn->setObjectName(conv.isActive ? "convActive" : "convItem");
-        btn->setCursor(Qt::PointingHandCursor);
-        btn->setCheckable(false);
+        item->setText(conv.title + "  ·  " + conv.timestamp);
 
-        QVBoxLayout* layout = new QVBoxLayout(btn);
-        layout->setContentsMargins(12, 8, 12, 8);
-        layout->setSpacing(2);
+        QFont font;
+        font.setPointSize(13);
+        if (conv.isActive) {
+            font.setBold(true);
+        }
+        item->setFont(font);
 
-        // 会话标题
-        QLabel* titleLabel = new QLabel(conv.title, btn);
-        titleLabel->setStyleSheet(QString("font-size: 13px; font-weight: %1; color: %2;")
-            .arg(conv.isActive ? "600" : "500", txtPri));
-        titleLabel->setAlignment(Qt::AlignLeft);
-        layout->addWidget(titleLabel);
+        item->setForeground(QColor(txtPri));
 
-        // 时间戳
-        QLabel* timeLabel = new QLabel(conv.timestamp, btn);
-        timeLabel->setStyleSheet(QString("font-size: 11px; color: %1;").arg(txtTer));
-        timeLabel->setAlignment(Qt::AlignLeft);
-        layout->addWidget(timeLabel);
-
-        // 根据激活状态设置背景与左边框
-        QString btnStyle = conv.isActive ?
-            QString("background-color: %1; border-left: 3px solid %2; border-radius: 8px;")
-                .arg(priSub, pri) :
-            QString("background-color: transparent; border-radius: 8px;");
-        btn->setStyleSheet(btnStyle);
-
-        // 点击后切换当前会话并刷新列表
-        connect(btn, &QPushButton::clicked, this, [this, i]() {
-            onConversationClicked(nullptr);
-            m_currentConversationIndex = i;
-            for (int j = 0; j < m_conversations.size(); ++j) {
-                m_conversations[j].isActive = (j == i);
-            }
-            updateConversationList();
-        });
+        if (conv.isActive) {
+            m_conversationList->setCurrentItem(item);
+        }
 
         m_conversationList->addItem(item);
-        m_conversationList->setItemWidget(item, btn);
     }
 }
 

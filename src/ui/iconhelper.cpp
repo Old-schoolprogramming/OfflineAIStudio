@@ -17,6 +17,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QFont>
+#include <cmath>
 
 /**
  * @brief 通用图标渲染框架
@@ -499,5 +500,43 @@ QPixmap IconHelper::plus(int size, const QColor& color)
     return render(size, color, [](QPainter* p, const QRect& r) {
         p->drawLine(r.center().x(), r.top() + r.height() * 0.2, r.center().x(), r.bottom() - r.height() * 0.2);
         p->drawLine(r.left() + r.width() * 0.2, r.center().y(), r.right() - r.width() * 0.2, r.center().y());
+    });
+}
+
+QPixmap IconHelper::minus(int size, const QColor& color)
+{
+    return render(size, color, [](QPainter* p, const QRect& r) {
+        p->drawLine(r.left() + r.width() * 0.2, r.center().y(), r.right() - r.width() * 0.2, r.center().y());
+    });
+}
+
+QPixmap IconHelper::square(int size, const QColor& color)
+{
+    return render(size, color, [](QPainter* p, const QRect& r) {
+        qreal m = r.width() * 0.2;
+        p->drawRect(r.left() + m, r.top() + m, r.width() - m * 2, r.height() - m * 2);
+    });
+}
+
+QPixmap IconHelper::copy(int size, const QColor& color)
+{
+    return render(size, color, [](QPainter* p, const QRect& r) {
+        qreal w = r.width();
+        qreal h = r.height();
+        qreal m = w * 0.15;
+        QRectF front(r.left() + m, r.top() + h * 0.25, w - m * 2.5, h - m * 2.5);
+        QRectF back(r.left() + w * 0.25, r.top() + m, w - m * 2.5, h - m * 2.5);
+        p->drawRect(back);
+        p->drawRect(front);
+    });
+}
+
+QPixmap IconHelper::xmark(int size, const QColor& color)
+{
+    return render(size, color, [](QPainter* p, const QRect& r) {
+        p->drawLine(r.left() + r.width() * 0.25, r.top() + r.height() * 0.25,
+                    r.right() - r.width() * 0.25, r.bottom() - r.height() * 0.25);
+        p->drawLine(r.right() - r.width() * 0.25, r.top() + r.height() * 0.25,
+                    r.left() + r.width() * 0.25, r.bottom() - r.height() * 0.25);
     });
 }

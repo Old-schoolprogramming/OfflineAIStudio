@@ -63,8 +63,14 @@ private slots:
     void onNewChatClicked();                           ///< 新建对话
     void onSearchTextChanged(const QString& text);     ///< 搜索文本变化
 
+    // 自定义标题栏槽函数
+    void onMinimizeClicked();                          ///< 最小化按钮点击
+    void onMaximizeClicked();                          ///< 最大化/还原按钮点击
+    void onCloseClicked();                             ///< 关闭按钮点击
+
 private:
     void setupUI();           ///< 构建整体布局（侧边栏+主区域）
+    void setupTitleBar();     ///< 构建自定义标题栏
     void setupSidebar();      ///< 构建左侧浮动导航栏
     void setupMainArea();     ///< 构建主内容区域
     void setupHeader();       ///< 构建顶部标题栏
@@ -72,6 +78,23 @@ private:
     void setupCoreComponents(); ///< 初始化核心组件（LLM、Orchestrator、Agent）
     void applyStyles();       ///< 应用动态主题样式表
     void updateNavButtons();  ///< 更新导航按钮的active状态和图标颜色
+
+protected:
+    void mousePressEvent(QMouseEvent* event) override;    ///< 鼠标按下事件（用于窗口拖动）
+    void mouseMoveEvent(QMouseEvent* event) override;     ///< 鼠标移动事件（用于窗口拖动）
+    void mouseReleaseEvent(QMouseEvent* event) override;  ///< 鼠标释放事件
+    void changeEvent(QEvent* event) override;             ///< 窗口状态变化事件（最大化/还原）
+
+private:
+    bool m_isDragging;       ///< 是否正在拖动窗口
+    QPoint m_dragPosition;   ///< 拖动起始位置
+
+    // 自定义标题栏组件
+    QWidget* m_titleBar;          ///< 自定义标题栏
+    QLabel* m_titleLabel;         ///< 窗口标题
+    QPushButton* m_minBtn;        ///< 最小化按钮
+    QPushButton* m_maxBtn;        ///< 最大化/还原按钮
+    QPushButton* m_closeBtn;      ///< 关闭按钮
 
     // 侧边栏组件
     QWidget* m_sidebar;           ///< 左侧导航栏容器

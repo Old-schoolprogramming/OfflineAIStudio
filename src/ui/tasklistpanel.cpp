@@ -118,19 +118,22 @@ void TaskListPanel::setupUI()
     // 步骤列表
     m_taskList = new QListWidget(this);
     m_taskList->setObjectName("taskList");
+    m_taskList->setSpacing(4);
+    m_taskList->setWordWrap(true);
     m_taskList->setStyleSheet(
         "QListWidget {"
         "   background-color: #0f172a;"
         "   color: #f1f5f9;"
         "   border: 1px solid #334155;"
         "   border-radius: 8px;"
-        "   padding: 4px;"
+        "   padding: 6px;"
         "}"
         "QListWidget::item {"
-        "   padding: 10px 12px;"
-        "   margin: 2px 0px;"
-        "   border-radius: 6px;"
+        "   padding: 12px 14px;"
+        "   margin: 3px 0px;"
+        "   border-radius: 8px;"
         "   border: 1px solid transparent;"
+        "   min-height: 48px;"
         "}"
         "QListWidget::item:hover {"
         "   background-color: #1e293b;"
@@ -183,24 +186,26 @@ void TaskListPanel::setPlan(const TaskPlan& plan)
     // 为每个步骤创建列表项
     for (const auto& step : plan.steps) {
         QListWidgetItem* item = new QListWidgetItem(m_taskList);
-        item->setData(Qt::UserRole, step.stepId);  // 存储 stepId 用于点击识别
+        item->setData(Qt::UserRole, step.stepId);
+        item->setSizeHint(QSize(0, 56));
 
         QString icon = statusIcon(step.status);
-        QString color = statusColor(step.status);
-
-        // 使用 HTML 富文本渲染步骤信息
-        QString text = QString(
-            "<div style='display: flex; align-items: center;'>"
-            "  <span style='font-size: 16px; margin-right: 8px;'>%1</span>"
-            "  <div>"
-            "    <div style='font-weight: 600; color: %2;'>步骤 %3: %4</div>"
-            "    <div style='font-size: 11px; color: #64748b; margin-top: 2px;'>%5 → %6</div>"
-            "  </div>"
-            "</div>"
-        ).arg(icon, color, QString::number(step.stepId), step.description.toHtmlEscaped(),
-              step.agent, step.tool);
+        QString text = QString("%1  步骤 %2: %3\n      %4 → %5")
+            .arg(icon)
+            .arg(step.stepId)
+            .arg(step.description)
+            .arg(step.agent)
+            .arg(step.tool);
 
         item->setText(text);
+
+        QFont font;
+        font.setPointSize(13);
+        item->setFont(font);
+
+        QColor color(statusColor(step.status));
+        item->setForeground(color);
+
         m_taskList->addItem(item);
     }
 
@@ -236,20 +241,16 @@ void TaskListPanel::updateStepStatus(int stepId, StepStatus status)
             if (item) {
                 const auto& step = m_currentPlan.steps[i];
                 QString icon = statusIcon(status);
-                QString color = statusColor(status);
-
-                QString text = QString(
-                    "<div style='display: flex; align-items: center;'>"
-                    "  <span style='font-size: 16px; margin-right: 8px;'>%1</span>"
-                    "  <div>"
-                    "    <div style='font-weight: 600; color: %2;'>步骤 %3: %4</div>"
-                    "    <div style='font-size: 11px; color: #64748b; margin-top: 2px;'>%5 → %6</div>"
-                    "  </div>"
-                    "</div>"
-                ).arg(icon, color, QString::number(step.stepId), step.description.toHtmlEscaped(),
-                      step.agent, step.tool);
+                QString text = QString("%1  步骤 %2: %3\n      %4 → %5")
+                    .arg(icon)
+                    .arg(step.stepId)
+                    .arg(step.description)
+                    .arg(step.agent)
+                    .arg(step.tool);
 
                 item->setText(text);
+                QColor color(statusColor(status));
+                item->setForeground(color);
             }
 
             break;

@@ -14,6 +14,7 @@
 #include "ui/iconhelper.h"
 #include <QMessageBox>
 #include <QApplication>
+#include <QMouseEvent>
 
 /**
  * @brief 构造函数
@@ -24,8 +25,14 @@
  */
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
-      m_currentPage(0)
+      m_currentPage(0),
+      m_isDragging(false)
 {
+    setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint | Qt::WindowMinMaxButtonsHint);
+    setAttribute(Qt::WA_TranslucentBackground);
+
+    setStatusBar(nullptr);
+
     setupCoreComponents();
     setupUI();
     applyStyles();
@@ -103,17 +110,81 @@ void MainWindow::setupCoreComponents()
 void MainWindow::setupUI()
 {
     QWidget* centralWidget = new QWidget(this);
+    centralWidget->setObjectName("centralContainer");
     setCentralWidget(centralWidget);
 
-    QHBoxLayout* mainLayout = new QHBoxLayout(centralWidget);
-    mainLayout->setContentsMargins(8, 8, 8, 8);
-    mainLayout->setSpacing(8);
+    QVBoxLayout* outerLayout = new QVBoxLayout(centralWidget);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+    outerLayout->setSpacing(0);
+
+    setupTitleBar();
+    outerLayout->addWidget(m_titleBar);
+
+    QWidget* contentWidget = new QWidget(centralWidget);
+    contentWidget->setObjectName("contentContainer");
+    QHBoxLayout* mainLayout = new QHBoxLayout(contentWidget);
+    mainLayout->setContentsMargins(12, 0, 12, 12);
+    mainLayout->setSpacing(12);
 
     setupSidebar();
     setupMainArea();
 
     mainLayout->addWidget(m_sidebar);
     mainLayout->addWidget(m_mainArea, 1);
+
+    outerLayout->addWidget(contentWidget, 1);
+}
+
+/**
+ * @brief 设置自定义标题栏
+ *
+ * 构建无边框窗口的自定义标题栏，包含窗口标题和最小化/最大化/关闭按钮。
+ * 标题栏支持鼠标拖动窗口。
+ */
+void MainWindow::setupTitleBar()
+{
+    m_titleBar = new QWidget(this);
+    m_titleBar->setObjectName("customTitleBar");
+    m_titleBar->setFixedHeight(40);
+
+    QHBoxLayout* titleLayout = new QHBoxLayout(m_titleBar);
+    titleLayout->setContentsMargins(16, 0, 8, 0);
+    titleLayout->setSpacing(8);
+
+    // 窗口标题
+    m_titleLabel = new QLabel("Offline AI Studio", m_titleBar);
+    m_titleLabel->setObjectName("windowTitle");
+    m_titleLabel->setStyleSheet("font-size: 13px; font-weight: 500;");
+    titleLayout->addWidget(m_titleLabel);
+
+    titleLayout->addStretch();
+
+    // 最小化按钮
+    m_minBtn = new QPushButton(m_titleBar);
+    m_minBtn->setObjectName("titleBarBtn");
+    m_minBtn->setFixedSize(36, 36);
+    m_minBtn->setCursor(Qt::PointingHandCursor);
+    m_minBtn->setToolTip("最小化");
+    connect(m_minBtn, &QPushButton::clicked, this, &MainWindow::onMinimizeClicked);
+    titleLayout->addWidget(m_minBtn);
+
+    // 最大化/还原按钮
+    m_maxBtn = new QPushButton(m_titleBar);
+    m_maxBtn->setObjectName("titleBarBtn");
+    m_maxBtn->setFixedSize(36, 36);
+    m_maxBtn->setCursor(Qt::PointingHandCursor);
+    m_maxBtn->setToolTip("最大化");
+    connect(m_maxBtn, &QPushButton::clicked, this, &MainWindow::onMaximizeClicked);
+    titleLayout->addWidget(m_maxBtn);
+
+    // 关闭按钮
+    m_closeBtn = new QPushButton(m_titleBar);
+    m_closeBtn->setObjectName("closeBtn");
+    m_closeBtn->setFixedSize(36, 36);
+    m_closeBtn->setCursor(Qt::PointingHandCursor);
+    m_closeBtn->setToolTip("关闭");
+    connect(m_closeBtn, &QPushButton::clicked, this, &MainWindow::onCloseClicked);
+    titleLayout->addWidget(m_closeBtn);
 }
 
 /**
@@ -300,22 +371,43 @@ void MainWindow::applyStyles()
     QString txtSec = tm->textSecondary().name();
     QString txtTer = tm->textTertiary().name();
 
+    QString radius = isMaximized() ? "0px" : "16px";
+    QString topRadius = isMaximized() ? "0px" : "16px";
+
+    // 中央容器样式
+    centralWidget()->setStyleSheet(QString(
+        "QWidget#centralContainer { background-color: %1; border-top-left-radius: %2; border-top-right-radius: %2; border-bottom-left-radius: %2; border-bottom-right-radius: %2; }"
+        "QWidget#contentContainer { background-color: %1; border-bottom-left-radius: %2; border-bottom-right-radius: %2; }"
+        "QWidget#customTitleBar { background-color: %3; border-top-left-radius: %2; border-top-right-radius: %2; }"
+        "QLabel#windowTitle { color: %4; }"
+        "QPushButton#titleBarBtn { background-color: transparent; border: none; border-radius: 8px; }"
+        "QPushButton#titleBarBtn:hover { background-color: %5; }"
+        "QPushButton#closeBtn { background-color: transparent; border: none; border-radius: 8px; }"
+        "QPushButton#closeBtn:hover { background-color: #EF4444; }"
+    ).arg(bg2).arg(topRadius).arg(bg2).arg(txtPri).arg(bg3));
+
+    // 设置标题栏按钮图标
+    QColor btnColor = tm->textSecondary();
+    m_minBtn->setIcon(QIcon(IconHelper::minus(14, btnColor)));
+    m_maxBtn->setIcon(QIcon(isMaximized() ? IconHelper::copy(14, btnColor) : IconHelper::square(14, btnColor)));
+    m_closeBtn->setIcon(QIcon(IconHelper::xmark(14, btnColor)));
+
     m_sidebar->setStyleSheet(QString(
-        "QWidget#appSidebar { background-color: %2; border: 1px solid %4; border-radius: 12px; }"
+        "QWidget#appSidebar { background-color: %1; border: 1px solid %2; border-radius: 12px; }"
         "QPushButton#navButton { background-color: transparent; border: none; border-radius: 10px; }"
         "QPushButton#navButton:hover { background-color: %3; }"
-        "QPushButton#navButton[active=true] { background-color: %5; }"
-    ).arg(bg, bg2, bg3, bdr, pri, txtPri, txtSec, txtTer, txtTer));
+        "QPushButton#navButton[active=true] { background-color: %4; }"
+    ).arg(bg2).arg(bdr).arg(bg3).arg(pri));
 
     m_mainArea->setStyleSheet(QString(
-        "QWidget#mainArea { background-color: %1; border: 1px solid %4; border-radius: 12px; }"
-        "QWidget#appHeader { background-color: %2; border-bottom: 1px solid %4; border-top-left-radius: 12px; border-top-right-radius: 12px; }"
-        "QLabel#headerTitle { color: %7; }"
-        "QLineEdit#headerSearch { background-color: %3; color: %7; border: 1px solid transparent; border-radius: 999px; padding: 0 14px; font-size: 13px; }"
+        "QWidget#mainArea { background-color: %1; border: 1px solid %2; border-radius: 12px; }"
+        "QWidget#appHeader { background-color: %3; border-bottom: 1px solid %2; border-top-left-radius: 12px; border-top-right-radius: 12px; }"
+        "QLabel#headerTitle { color: %4; }"
+        "QLineEdit#headerSearch { background-color: %5; color: %4; border: 1px solid transparent; border-radius: 999px; padding: 0 14px; font-size: 13px; }"
         "QLineEdit#headerSearch:focus { border-color: %6; background-color: %1; }"
-        "QLabel#themeLabel { color: %9; }"
+        "QLabel#themeLabel { color: %7; }"
         "QStackedWidget#pageStack { background-color: %1; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; }"
-    ).arg(bg, bg2, bg3, bdr, pri, pri, txtPri, txtSec, txtTer));
+    ).arg(bg).arg(bdr).arg(bg2).arg(txtPri).arg(bg3).arg(pri).arg(txtTer));
 }
 
 /**
@@ -615,4 +707,99 @@ void MainWindow::onTestConnection()
 void MainWindow::onRestoreDefaults()
 {
     QMessageBox::information(this, "恢复默认", "已恢复默认设置。");
+}
+
+/**
+ * @brief 最小化按钮点击槽函数
+ */
+void MainWindow::onMinimizeClicked()
+{
+    showMinimized();
+}
+
+/**
+ * @brief 最大化/还原按钮点击槽函数
+ */
+void MainWindow::onMaximizeClicked()
+{
+    if (isMaximized()) {
+        showNormal();
+    } else {
+        showMaximized();
+    }
+}
+
+/**
+ * @brief 关闭按钮点击槽函数
+ */
+void MainWindow::onCloseClicked()
+{
+    close();
+}
+
+/**
+ * @brief 鼠标按下事件处理
+ * @param event 鼠标事件
+ *
+ * 在自定义标题栏区域按下左键时开始拖动窗口。
+ */
+void MainWindow::mousePressEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton && m_titleBar) {
+        QPoint pos = event->pos();
+        if (m_titleBar->geometry().contains(pos)) {
+            m_isDragging = true;
+            m_dragPosition = event->globalPos() - frameGeometry().topLeft();
+            event->accept();
+            return;
+        }
+    }
+    QMainWindow::mousePressEvent(event);
+}
+
+/**
+ * @brief 鼠标移动事件处理
+ * @param event 鼠标事件
+ *
+ * 拖动窗口时更新窗口位置。
+ */
+void MainWindow::mouseMoveEvent(QMouseEvent* event)
+{
+    if (m_isDragging && (event->buttons() & Qt::LeftButton)) {
+        move(event->globalPos() - m_dragPosition);
+        event->accept();
+        return;
+    }
+    QMainWindow::mouseMoveEvent(event);
+}
+
+/**
+ * @brief 鼠标释放事件处理
+ * @param event 鼠标事件
+ *
+ * 结束窗口拖动。
+ */
+void MainWindow::mouseReleaseEvent(QMouseEvent* event)
+{
+    m_isDragging = false;
+    QMainWindow::mouseReleaseEvent(event);
+}
+
+/**
+ * @brief 窗口状态变化事件
+ * @param event 事件
+ *
+ * 窗口最大化/还原时更新按钮提示和图标。
+ */
+void MainWindow::changeEvent(QEvent* event)
+{
+    QMainWindow::changeEvent(event);
+    if (event->type() == QEvent::WindowStateChange && m_maxBtn) {
+        if (isMaximized()) {
+            m_maxBtn->setToolTip("还原");
+        } else {
+            m_maxBtn->setToolTip("最大化");
+        }
+        applyStyles();
+    }
 }

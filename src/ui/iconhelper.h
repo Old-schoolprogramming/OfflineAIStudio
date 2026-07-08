@@ -158,6 +158,38 @@ public:
      */
     static QPixmap plus(int size, const QColor& color);
 
+    /**
+     * @brief 绘制减号/最小化图标
+     * @param size 图标尺寸（宽高相同）
+     * @param color 图标颜色
+     * @return 绘制完成的QPixmap
+     */
+    static QPixmap minus(int size, const QColor& color);
+
+    /**
+     * @brief 绘制方框/最大化图标
+     * @param size 图标尺寸（宽高相同）
+     * @param color 图标颜色
+     * @return 绘制完成的QPixmap
+     */
+    static QPixmap square(int size, const QColor& color);
+
+    /**
+     * @brief 绘制复制/还原图标
+     * @param size 图标尺寸（宽高相同）
+     * @param color 图标颜色
+     * @return 绘制完成的QPixmap
+     */
+    static QPixmap copy(int size, const QColor& color);
+
+    /**
+     * @brief 绘制X/关闭图标
+     * @param size 图标尺寸（宽高相同）
+     * @param color 图标颜色
+     * @return 绘制完成的QPixmap
+     */
+    static QPixmap xmark(int size, const QColor& color);
+
 private:
     /**
      * @brief 通用图标渲染方法

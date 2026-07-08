@@ -359,20 +359,20 @@ QString ThemeManager::styleSheet() const
     QString suc = stateSuccess().name();
     QString err = stateError().name();
 
-    return QString(R"(
+    QString style = QString(R"(
         QMainWindow {
-            background-color: %1;
+            background-color: transparent;
         }
         QWidget {
             background-color: %1;
-            color: %7;
+            color: %2;
         }
         QFrame {
             background-color: %1;
             border: none;
         }
         QLabel {
-            color: %7;
+            color: %2;
             background: transparent;
         }
         QPushButton {
@@ -381,26 +381,26 @@ QString ThemeManager::styleSheet() const
             padding: 8px 18px;
             font-weight: 500;
             font-size: 13px;
-            background-color: %5;
-            color: %7;
+            background-color: %3;
+            color: %2;
         }
         QPushButton:hover {
-            background-color: %3;
+            background-color: %4;
         }
         QPushButton:pressed {
-            background-color: %4;
+            background-color: %5;
         }
         QPushButton#primaryButton {
             background-color: %6;
-            color: %8;
+            color: %7;
         }
         QPushButton#primaryButton:hover {
-            background-color: %9;
+            background-color: #2563EB;
         }
         QLineEdit {
-            background-color: %2;
-            color: %7;
-            border: 1px solid %4;
+            background-color: %8;
+            color: %2;
+            border: 1px solid %5;
             border-radius: 8px;
             padding: 8px 14px;
             font-size: 13px;
@@ -410,50 +410,52 @@ QString ThemeManager::styleSheet() const
             border-color: %6;
         }
         QTextEdit {
-            background-color: %2;
-            color: %7;
-            border: 1px solid %4;
+            background-color: %8;
+            color: %2;
+            border: 1px solid %5;
             border-radius: 8px;
             padding: 12px;
             font-size: 13px;
             line-height: 1.6;
         }
         QScrollBar:vertical {
-            background-color: %2;
+            background-color: transparent;
             width: 8px;
             border-radius: 4px;
+            margin: 4px;
         }
         QScrollBar::handle:vertical {
-            background-color: %3;
+            background-color: %4;
             border-radius: 4px;
             min-height: 30px;
         }
         QScrollBar::handle:vertical:hover {
-            background-color: %4;
+            background-color: %5;
         }
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
             height: 0px;
         }
         QScrollBar:horizontal {
-            background-color: %2;
+            background-color: transparent;
             height: 8px;
             border-radius: 4px;
+            margin: 4px;
         }
         QScrollBar::handle:horizontal {
-            background-color: %3;
+            background-color: %4;
             border-radius: 4px;
             min-width: 30px;
         }
         QScrollBar::handle:horizontal:hover {
-            background-color: %4;
+            background-color: %5;
         }
         QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
             width: 0px;
         }
         QComboBox {
-            background-color: %2;
-            color: %7;
-            border: 1px solid %4;
+            background-color: %8;
+            color: %2;
+            border: 1px solid %5;
             border-radius: 8px;
             padding: 6px 12px;
             min-height: 22px;
@@ -466,16 +468,16 @@ QString ThemeManager::styleSheet() const
             width: 24px;
         }
         QComboBox QAbstractItemView {
-            background-color: %2;
-            color: %7;
-            border: 1px solid %4;
+            background-color: %8;
+            color: %2;
+            border: 1px solid %5;
             border-radius: 8px;
             selection-background-color: %6;
         }
         QSpinBox, QDoubleSpinBox {
-            background-color: %2;
-            color: %7;
-            border: 1px solid %4;
+            background-color: %8;
+            color: %2;
+            border: 1px solid %5;
             border-radius: 8px;
             padding: 6px 10px;
         }
@@ -484,7 +486,7 @@ QString ThemeManager::styleSheet() const
         }
         QListWidget {
             background-color: %1;
-            color: %7;
+            color: %2;
             border: none;
             outline: none;
         }
@@ -494,14 +496,14 @@ QString ThemeManager::styleSheet() const
             margin: 2px 4px;
         }
         QListWidget::item:selected {
-            background-color: %10;
-            color: %7;
+            background-color: %9;
+            color: %2;
         }
         QListWidget::item:hover {
-            background-color: %3;
+            background-color: %4;
         }
         QSplitter::handle {
-            background-color: %4;
+            background-color: %5;
         }
         QSplitter::handle:hover {
             background-color: %6;
@@ -509,9 +511,9 @@ QString ThemeManager::styleSheet() const
         QProgressBar {
             border: none;
             border-radius: 6px;
-            background-color: %3;
+            background-color: %4;
             text-align: center;
-            color: %7;
+            color: %2;
             font-size: 12px;
             height: 20px;
         }
@@ -520,9 +522,9 @@ QString ThemeManager::styleSheet() const
             background-color: %6;
         }
         QMenu {
-            background-color: %2;
-            color: %7;
-            border: 1px solid %4;
+            background-color: %8;
+            color: %2;
+            border: 1px solid %5;
             border-radius: 8px;
             padding: 6px;
         }
@@ -531,15 +533,16 @@ QString ThemeManager::styleSheet() const
             border-radius: 6px;
         }
         QMenu::item:selected {
-            background-color: %3;
+            background-color: %4;
         }
         QToolTip {
-            background-color: %7;
+            background-color: %2;
             color: %1;
             border: none;
             border-radius: 6px;
             padding: 4px 10px;
             font-size: 12px;
         }
-    )").arg(bg, bg2, bg3, bdr, surf, pri, txtPri, priFg, txtSec, priSub);
+    )").arg(bg).arg(txtPri).arg(surf).arg(bg3).arg(bdr).arg(pri).arg(priFg).arg(bg2).arg(priSub);
+    return style;
 }
