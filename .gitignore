@@ -1,0 +1,16 @@
+/build/
+/cmake-build-*/
+/.idea/
+/.vscode/
+*.user
+*.autosave
+*.exe
+*.dll
+*.pdb
+*.ilk
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+compile_commands.json
+.qtc_clangd/
