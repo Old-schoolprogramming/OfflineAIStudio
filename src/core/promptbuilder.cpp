@@ -1,18 +1,18 @@
 /**
  * @file promptbuilder.cpp
- * @brief Prompt 构建器实现
+ * @brief Prompt构建器实现
  *
  * @details
- * PromptBuilder 的核心工作是字符串拼接。
+ * PromptBuilder的核心工作是字符串拼接。
  * 规划模式下的系统提示词是本文件最重要的输出，它直接决定了：
- * - LLM 是否能正确理解工具描述
- * - LLM 是否能输出可被 Planner 解析的 JSON
+ * - LLM是否能正确理解工具描述
+ * - LLM是否能输出可被Planner解析的JSON
  * - 系统整体的稳定性和可靠性
  *
  * 提示词设计原则：
  * 1. 清晰性：每个工具的描述要准确、无歧义
- * 2. 完整性：JSON 格式的每个字段都要有示例和说明
- * 3. 约束性：明确告诉 LLM "Return ONLY the JSON object, no extra explanation"
+ * 2. 完整性：JSON格式的每个字段都要有示例和说明
+ * 3. 约束性：明确告诉LLM "Return ONLY the JSON object, no extra explanation"
  * 4. 容错性：为可选字段提供默认值说明
  */
 
@@ -23,16 +23,15 @@
 /**
  * @brief 构造函数
  *
- * @implementation
  * 初始化两个格式模板：
- * - m_toolCallFormat: v1.0 的文本工具调用格式（保留兼容）
- * - m_jsonPlanFormat: v2.0 的 JSON 计划格式模板，使用 C++11 原始字符串字面量
- *   确保 JSON 模板中的特殊字符（如引号、反斜杠）不需要转义
+ * - m_toolCallFormat: v1.0的文本工具调用格式（保留兼容）
+ * - m_jsonPlanFormat: v2.0的JSON计划格式模板，使用C++11原始字符串字面量
+ *   确保JSON模板中的特殊字符（如引号、反斜杠）不需要转义
  */
 PromptBuilder::PromptBuilder()
     : m_toolCallFormat("<function_name>(param1=value1, param2=value2, ...)")
 {
-    // C++11 原始字符串字面量（R"(...)"），避免大量转义
+    // C++11原始字符串字面量（R"(...)"），避免大量转义
     m_jsonPlanFormat = R"({
   "goal": "任务目标描述",
   "steps": [
@@ -59,14 +58,15 @@ PromptBuilder::~PromptBuilder()
 
 /**
  * @brief 构建普通对话的系统提示词
- * @param role AI 角色
- * @param agents 可用 Agent 列表
- * @return 系统提示词
+ * @param role AI角色描述
+ * @param agents 可用Agent列表
+ * @return 系统提示词字符串
  *
- * @implementation
- * 1. 声明 AI 角色
- * 2. 遍历所有 Agent，输出名称、描述和工具列表
- * 3. 说明工具调用格式
+ * @details
+ * 构建流程：
+ * 1. 声明AI角色
+ * 2. 遍历所有Agent，输出名称、描述和工具列表（通过Agent::formatToolsForPrompt）
+ * 3. 说明工具调用格式（m_toolCallFormat）
  * 4. 要求中文回复
  */
 QString PromptBuilder::buildSystemPrompt(const QString& role, const QList<Agent*>& agents)
@@ -74,6 +74,7 @@ QString PromptBuilder::buildSystemPrompt(const QString& role, const QList<Agent*
     QString prompt = "You are an AI assistant with the role: " + role + "\n";
     prompt += "You have access to the following agents and their tools:\n\n";
 
+    // 遍历所有Agent，拼接其名称、描述和工具信息
     for (Agent* agent : agents) {
         prompt += "=== " + agent->name() + " ===\n";
         prompt += "Description: " + agent->description() + "\n";
@@ -89,8 +90,10 @@ QString PromptBuilder::buildSystemPrompt(const QString& role, const QList<Agent*
 
 /**
  * @brief 构建普通对话的用户提示词
- * @param userQuery 用户输入
- * @return 用户提示词
+ * @param userQuery 用户原始输入
+ * @return 格式化后的用户提示词
+ *
+ * 简单的字符串拼接，为LLM明确标注用户输入部分。
  */
 QString PromptBuilder::buildUserPrompt(const QString& userQuery)
 {
@@ -99,9 +102,12 @@ QString PromptBuilder::buildUserPrompt(const QString& userQuery)
 
 /**
  * @brief 构建工具执行结果提示词
- * @param toolName 工具名称
- * @param result 执行结果
- * @return 结果提示词
+ * @param toolName 执行的工具名称
+ * @param result 工具执行返回的原始结果字符串
+ * @return 格式化后的结果提示词
+ *
+ * 将工具执行结果包装为LLM可理解的上下文信息，
+ * 通常作为新一轮对话的用户消息或系统消息插入。
  */
 QString PromptBuilder::buildToolResultPrompt(const QString& toolName, const QString& result)
 {
@@ -109,11 +115,14 @@ QString PromptBuilder::buildToolResultPrompt(const QString& toolName, const QStr
 }
 
 /**
- * @brief 构建完整的普通对话 Prompt
+ * @brief 构建完整的普通对话Prompt
  * @param userQuery 用户问题
- * @param role AI 角色
- * @param agents 可用 Agent 列表
- * @return 完整 Prompt
+ * @param role AI角色
+ * @param agents 可用Agent列表
+ * @return 包含系统提示词和用户提示词的完整Prompt
+ *
+ * 组合buildSystemPrompt和buildUserPrompt的输出，
+ * 用于一次性发送给LLM的非规划模式请求。
  */
 QString PromptBuilder::buildFullPrompt(const QString& userQuery, const QString& role, const QList<Agent*>& agents)
 {
@@ -124,19 +133,19 @@ QString PromptBuilder::buildFullPrompt(const QString& userQuery, const QString& 
 
 /**
  * @brief 构建规划模式的系统提示词
- * @param agents 可用 Agent 列表
+ * @param agents 可用Agent列表
  * @return 规划专用系统提示词
  *
- * @implementation
+ * @details
  * 系统提示词的结构：
  * 1. 角色声明："You are an expert task planner and multi-agent orchestrator"
- * 2. Agent/工具清单：遍历所有 Agent，输出 name、description、tools
- * 3. JSON 格式示例：展示精确的输出格式（m_jsonPlanFormat）
- * 4. 生成规则：7 条明确的规则约束 LLM 的输出行为
+ * 2. Agent/工具清单：遍历所有Agent，输出name、description、tools
+ * 3. JSON格式示例：展示精确的输出格式（m_jsonPlanFormat）
+ * 4. 生成规则：7条明确的规则约束LLM的输出行为
  * 5. 降级说明：纯文本回答场景的处理方式
  *
- * @note 这个提示词是系统 Prompt 工程的核心产物。
- *       任何格式变更都需要同步更新 m_jsonPlanFormat 和 Planner::parseStep() 的字段映射。
+ * @note 这个提示词是系统Prompt工程的核心产物。
+ *       任何格式变更都需要同步更新m_jsonPlanFormat和Planner::parseStep()的字段映射。
  */
 QString PromptBuilder::buildPlanningSystemPrompt(const QList<Agent*>& agents)
 {
@@ -147,14 +156,14 @@ You have access to the following agents and their tools:
 
 )";
 
-    // 输出所有 Agent 和工具的详细描述
+    // 输出所有Agent和工具的详细描述
     for (Agent* agent : agents) {
         prompt += "=== " + agent->name() + " ===\n";
         prompt += "Description: " + agent->description() + "\n";
         prompt += agent->formatToolsForPrompt() + "\n\n";
     }
 
-    // 输出 JSON 格式要求
+    // 输出JSON格式要求
     prompt += R"(
 Your response must be a single JSON object following this exact format:
 
@@ -183,8 +192,8 @@ If the user's request is a simple question that doesn't require any tools, respo
  * @param userQuery 用户输入
  * @return 用户提示词
  *
- * @implementation
- * 简单的格式化，明确告知 LLM "请为此任务创建执行计划"。
+ * @details
+ * 简单的格式化，明确告知LLM "请为此任务创建执行计划"。
  */
 QString PromptBuilder::buildPlanningUserPrompt(const QString& userQuery)
 {

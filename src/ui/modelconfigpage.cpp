@@ -1,3 +1,12 @@
+/**
+ * @file modelconfigpage.cpp
+ * @brief 模型配置页面实现
+ *
+ * @details
+ * ModelConfigPage提供本地大语言模型的连接配置、参数调节及已安装模型管理功能。
+ * 页面采用滚动布局，包含连接状态卡片、模型设置、高级参数网格、操作按钮及模型卡片网格。
+ */
+
 #include "modelconfigpage.h"
 #include "thememanager.h"
 #include "iconhelper.h"
@@ -7,6 +16,12 @@
 #include <QFrame>
 #include <QFileDialog>
 
+/**
+ * @brief 构造函数
+ * @param parent 父QWidget
+ *
+ * 初始化UI、应用主题并连接ThemeManager主题变化信号。
+ */
 ModelConfigPage::ModelConfigPage(QWidget *parent)
     : QWidget(parent)
 {
@@ -16,10 +31,20 @@ ModelConfigPage::ModelConfigPage(QWidget *parent)
             this, &ModelConfigPage::onThemeChanged);
 }
 
+/**
+ * @brief 析构函数
+ */
 ModelConfigPage::~ModelConfigPage()
 {
 }
 
+/**
+ * @brief 设置模型配置页面整体UI布局
+ *
+ * 采用QScrollArea承载垂直内容布局，依次添加：
+ * 连接状态卡片、模型设置组、高级参数组、底部操作栏、已安装模型网格。
+ * 确保内容超出可视区域时可滚动查看。
+ */
 void ModelConfigPage::setupUI()
 {
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
@@ -49,7 +74,7 @@ void ModelConfigPage::setupUI()
     contentLayout->addWidget(m_advancedGroup);
     contentLayout->addSpacing(28);
 
-    // Bottom action bar
+    // 底部操作栏：恢复默认 | 保存配置
     QHBoxLayout* actionLayout = new QHBoxLayout();
     actionLayout->setContentsMargins(0, 20, 0, 36);
     actionLayout->setSpacing(12);
@@ -77,6 +102,12 @@ void ModelConfigPage::setupUI()
     mainLayout->addWidget(m_scrollArea);
 }
 
+/**
+ * @brief 设置连接状态卡片
+ *
+ * 构建水平布局卡片，左侧展示连接状态指示点与描述文本（模型名称+部署方式），
+ * 右侧放置"测试连接"按钮。
+ */
 void ModelConfigPage::setupConnectionCard()
 {
     m_connectionCard = new QWidget(m_contentWidget);
@@ -90,6 +121,7 @@ void ModelConfigPage::setupConnectionCard()
     statusLayout->setContentsMargins(0, 0, 0, 0);
     statusLayout->setSpacing(12);
 
+    // 状态指示圆点
     QLabel* statusDot = new QLabel(statusWidget);
     statusDot->setFixedSize(10, 10);
     statusDot->setObjectName("statusDot");
@@ -118,6 +150,14 @@ void ModelConfigPage::setupConnectionCard()
     cardLayout->addWidget(m_testConnectionBtn);
 }
 
+/**
+ * @brief 设置模型基础设置区域
+ *
+ * 包含三个配置项：
+ * - 模型端点（API URL输入框+已连接徽章）
+ * - 模型名称（下拉选择框，预置常用本地模型）
+ * - 推理后端（CPU/CUDA/Metal单选按钮组）
+ */
 void ModelConfigPage::setupModelSettings()
 {
     m_modelSettingsGroup = new QWidget(m_contentWidget);
@@ -130,7 +170,7 @@ void ModelConfigPage::setupModelSettings()
     title->setStyleSheet("font-size: 15px; font-weight: 600;");
     groupLayout->addWidget(title);
 
-    // Endpoint
+    // 模型端点输入
     QVBoxLayout* endpointLayout = new QVBoxLayout();
     endpointLayout->setSpacing(6);
     QLabel* endpointLabel = new QLabel("模型端点 (Endpoint)", m_modelSettingsGroup);
@@ -157,7 +197,7 @@ void ModelConfigPage::setupModelSettings()
     endpointLayout->addLayout(endpointInputLayout);
     groupLayout->addLayout(endpointLayout);
 
-    // Model Name
+    // 模型名称选择
     QVBoxLayout* modelLayout = new QVBoxLayout();
     modelLayout->setSpacing(6);
     QLabel* modelLabel = new QLabel("模型名称", m_modelSettingsGroup);
@@ -171,7 +211,7 @@ void ModelConfigPage::setupModelSettings()
     modelLayout->addWidget(m_modelCombo);
     groupLayout->addLayout(modelLayout);
 
-    // Backend
+    // 推理后端选择
     QVBoxLayout* backendLayout = new QVBoxLayout();
     backendLayout->setSpacing(8);
     QLabel* backendLabel = new QLabel("推理后端", m_modelSettingsGroup);
@@ -201,6 +241,12 @@ void ModelConfigPage::setupModelSettings()
     groupLayout->addLayout(backendLayout);
 }
 
+/**
+ * @brief 设置高级参数区域
+ *
+ * 在QGridLayout卡片中排列六组可调参数：
+ * Temperature、Top P、Max Tokens、Context Length、GPU显存限制、并行线程数。
+ */
 void ModelConfigPage::setupAdvancedSettings()
 {
     m_advancedGroup = new QWidget(m_contentWidget);
@@ -223,7 +269,7 @@ void ModelConfigPage::setupAdvancedSettings()
     grid->setContentsMargins(20, 20, 20, 20);
     grid->setSpacing(16);
 
-    // Row 0: Temperature & Top P
+    // Row 0-1: Temperature & Top P
     QLabel* tempLabel = new QLabel("Temperature", card);
     tempLabel->setStyleSheet("font-size: 12px; font-weight: 500;");
     grid->addWidget(tempLabel, 0, 0);
@@ -246,7 +292,7 @@ void ModelConfigPage::setupAdvancedSettings()
     m_topPSpin->setFixedWidth(120);
     grid->addWidget(m_topPSpin, 1, 1);
 
-    // Row 1: Max Tokens & Context Length
+    // Row 2-3: Max Tokens & Context Length
     QLabel* maxTokensLabel = new QLabel("Max Tokens", card);
     maxTokensLabel->setStyleSheet("font-size: 12px; font-weight: 500;");
     grid->addWidget(maxTokensLabel, 2, 0);
@@ -267,7 +313,7 @@ void ModelConfigPage::setupAdvancedSettings()
     m_contextLengthSpin->setFixedWidth(160);
     grid->addWidget(m_contextLengthSpin, 3, 1);
 
-    // Row 2: GPU Memory & Parallel Threads
+    // Row 4-5: GPU Memory & Parallel Threads
     QLabel* gpuLabel = new QLabel("GPU 显存限制", card);
     gpuLabel->setStyleSheet("font-size: 12px; font-weight: 500;");
     grid->addWidget(gpuLabel, 4, 0);
@@ -295,6 +341,12 @@ void ModelConfigPage::setupAdvancedSettings()
     groupLayout->addWidget(card);
 }
 
+/**
+ * @brief 设置已安装模型网格展示区域
+ *
+ * 预置若干示例模型数据，并为每个模型创建信息卡片，
+ * 卡片中包含模型名称、大小、类型、运行状态徽章及更多操作按钮。
+ */
 void ModelConfigPage::setupModelGrid()
 {
     m_installedModelsGroup = new QWidget(m_contentWidget);
@@ -323,6 +375,7 @@ void ModelConfigPage::setupModelGrid()
         cardLayout->setContentsMargins(16, 16, 16, 16);
         cardLayout->setSpacing(6);
 
+        // 卡片头部：名称 + 更多按钮
         QHBoxLayout* header = new QHBoxLayout();
         QLabel* name = new QLabel(m_models[i].name, card);
         name->setStyleSheet("font-size: 14px; font-weight: 600;");
@@ -336,6 +389,7 @@ void ModelConfigPage::setupModelGrid()
         header->addWidget(moreBtn);
         cardLayout->addLayout(header);
 
+        // 辅助lambda：添加标签-值行，状态行使用彩色徽章
         auto addRow = [&](const QString& label, const QString& value, bool isStatus = false) {
             QHBoxLayout* row = new QHBoxLayout();
             QLabel* l = new QLabel(label, card);
@@ -366,6 +420,12 @@ void ModelConfigPage::setupModelGrid()
     groupLayout->addLayout(grid);
 }
 
+/**
+ * @brief 应用当前主题样式
+ *
+ * 从ThemeManager获取颜色令牌，为内容区、连接卡片、高级卡片、模型卡片、
+ * 各类输入框与按钮构建并设置QSS样式表。
+ */
 void ModelConfigPage::applyTheme()
 {
     ThemeManager* tm = ThemeManager::instance();
@@ -409,83 +469,152 @@ void ModelConfigPage::applyTheme()
     ).arg(bg, bg2, bg3, bdr, surf, pri, txtSec, txtPri, suc, txtTer, sucBg));
 }
 
+/**
+ * @brief 获取当前API地址
+ * @return API URL字符串
+ */
 QString ModelConfigPage::apiUrl() const
 {
     return m_apiUrlEdit->text();
 }
 
+/**
+ * @brief 获取当前选中的模型名称
+ * @return 模型名称字符串
+ */
 QString ModelConfigPage::modelName() const
 {
     return m_modelCombo->currentText();
 }
 
+/**
+ * @brief 获取Max Tokens设置值
+ * @return 最大生成Token数
+ */
 int ModelConfigPage::maxTokens() const
 {
     return m_maxTokensSpin->value();
 }
 
+/**
+ * @brief 获取Temperature设置值
+ * @return 温度参数值
+ */
 double ModelConfigPage::temperature() const
 {
     return m_temperatureSpin->value();
 }
 
+/**
+ * @brief 获取Top P设置值
+ * @return Top P参数值
+ */
 double ModelConfigPage::topP() const
 {
     return m_topPSpin->value();
 }
 
+/**
+ * @brief 获取Context Length设置值
+ * @return 上下文长度
+ */
 int ModelConfigPage::contextLength() const
 {
     return m_contextLengthSpin->value();
 }
 
+/**
+ * @brief 获取GPU显存限制设置值
+ * @return 显存限制（GB）
+ */
 int ModelConfigPage::gpuMemoryLimit() const
 {
     return m_gpuMemorySpin->value();
 }
 
+/**
+ * @brief 获取并行线程数设置值
+ * @return 线程数
+ */
 int ModelConfigPage::parallelThreads() const
 {
     return m_parallelThreadsSpin->value();
 }
 
+/**
+ * @brief 获取当前选中的推理后端
+ * @return 后端名称字符串（"CPU"/"CUDA"/"Metal"）
+ */
 QString ModelConfigPage::backend() const
 {
     int id = m_backendGroup->checkedId();
     return id == 0 ? "CPU" : (id == 1 ? "CUDA" : "Metal");
 }
 
+/**
+ * @brief 设置API地址
+ * @param url 目标API URL
+ */
 void ModelConfigPage::setApiUrl(const QString& url)
 {
     m_apiUrlEdit->setText(url);
 }
 
+/**
+ * @brief 设置模型名称
+ * @param name 目标模型名称
+ *
+ * 在下拉框中查找匹配项并设为当前选中项。
+ */
 void ModelConfigPage::setModelName(const QString& name)
 {
     int idx = m_modelCombo->findText(name);
     if (idx >= 0) m_modelCombo->setCurrentIndex(idx);
 }
 
+/**
+ * @brief 设置Max Tokens
+ * @param tokens 最大生成Token数
+ */
 void ModelConfigPage::setMaxTokens(int tokens)
 {
     m_maxTokensSpin->setValue(tokens);
 }
 
+/**
+ * @brief 设置Temperature
+ * @param temp 温度参数值
+ */
 void ModelConfigPage::setTemperature(double temp)
 {
     m_temperatureSpin->setValue(temp);
 }
 
+/**
+ * @brief 保存配置按钮点击槽函数
+ *
+ * 发射settingsChanged信号，由主窗口接收并同步到LlmClient。
+ */
 void ModelConfigPage::onSaveClicked()
 {
     emit settingsChanged();
 }
 
+/**
+ * @brief 测试连接按钮点击槽函数
+ *
+ * 发射testConnectionClicked信号，由主窗口弹出测试提示。
+ */
 void ModelConfigPage::onTestConnectionClicked()
 {
     emit testConnectionClicked();
 }
 
+/**
+ * @brief 恢复默认设置按钮点击槽函数
+ *
+ * 将所有控件恢复为预设默认值，并发射restoreDefaultsClicked信号。
+ */
 void ModelConfigPage::onRestoreDefaultsClicked()
 {
     m_apiUrlEdit->setText("http://localhost:8080/v1");
@@ -499,11 +628,22 @@ void ModelConfigPage::onRestoreDefaultsClicked()
     emit restoreDefaultsClicked();
 }
 
+/**
+ * @brief 后端选择变化槽函数（占位）
+ * @param button 被选中的单选按钮
+ *
+ * 当前未实现额外逻辑，保留接口以便后续扩展。
+ */
 void ModelConfigPage::onBackendSelected(QAbstractButton* button)
 {
     Q_UNUSED(button)
 }
 
+/**
+ * @brief 主题变化响应槽函数
+ *
+ * 重新应用主题样式表。
+ */
 void ModelConfigPage::onThemeChanged()
 {
     applyTheme();

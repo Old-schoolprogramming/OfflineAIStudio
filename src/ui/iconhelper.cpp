@@ -1,8 +1,39 @@
+/**
+ * @file iconhelper.cpp
+ * @brief 矢量图标绘制辅助类实现
+ *
+ * @details
+ * IconHelper 使用 QPainter 绘制 SVG 风格的矢量图标，
+ * 所有图标均为代码绘制，零外部资源依赖，支持任意分辨率缩放。
+ *
+ * 核心设计要点：
+ * 1. 通用渲染框架：render() 方法提供统一的画布创建、抗锯齿和画笔设置
+ * 2. 每个图标方法接收 size 和 color 参数，返回 QPixmap
+ * 3. 图标几何坐标均基于 QRect 的相对比例计算，确保任意尺寸下保持比例
+ * 4. 画笔宽度根据尺寸自动缩放（size / 12.0），保证线条粗细一致
+ */
+
 #include "iconhelper.h"
 #include <QPainter>
 #include <QPainterPath>
 #include <QFont>
 
+/**
+ * @brief 通用图标渲染框架
+ * @param size 图标尺寸（宽高相同，单位：像素）
+ * @param color 图标线条颜色
+ * @param draw 绘制回调函数，接收 QPainter 指针和 QRect 绘制区域
+ * @return 渲染完成的 QPixmap（带透明背景）
+ *
+ * @implementation
+ * 1. 创建 size×size 的透明 QPixmap
+ * 2. 初始化 QPainter，启用抗锯齿渲染
+ * 3. 设置画笔：指定颜色、宽度（size/12.0）、圆角线帽和连接
+ * 4. 不填充画刷（Qt::NoBrush），仅绘制线条
+ * 5. 计算内边距为 size/10 的绘制区域 QRect
+ * 6. 调用 draw 回调执行具体绘制逻辑
+ * 7. 结束绘制并返回 QPixmap
+ */
 QPixmap IconHelper::render(int size, const QColor& color, void (*draw)(QPainter*, const QRect&))
 {
     QPixmap pixmap(size, size);
@@ -17,6 +48,18 @@ QPixmap IconHelper::render(int size, const QColor& color, void (*draw)(QPainter*
     return pixmap;
 }
 
+/**
+ * @brief 绘制应用 Logo 图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：正六边形外框 + 中心 "AI" 文字
+ * - 六边形顶点基于尺寸比例计算（中心 0.5, 顶部 0.08, 左右 0.08/0.92）
+ * - 使用 QPolygonF 定义六个顶点
+ * - 文字使用粗体，字号为 size/4.5（最小 6pt），居中绘制
+ */
 QPixmap IconHelper::logo(int size, const QColor& color)
 {
     QPixmap pixmap(size, size);
@@ -44,6 +87,17 @@ QPixmap IconHelper::logo(int size, const QColor& color)
     return pixmap;
 }
 
+/**
+ * @brief 绘制消息气泡图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：圆角矩形 + 左下小尾巴
+ * - 主体为横向圆角矩形（圆角半径为高度的 0.2 倍）
+ * - 尾巴使用 QPolygonF 三点折线：从左下边缘向左下延伸再折回
+ */
 QPixmap IconHelper::message(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -58,6 +112,19 @@ QPixmap IconHelper::message(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制芯片/处理器图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：外圆角矩形 + 内正方形 + 8 根引脚线
+ * - 外框为圆角矩形（圆角半径为宽度的 0.15 倍）
+ * - 内框为居中正方形（边长为外框的 0.5 倍）
+ * - 8 根引脚线：上下各 3 根（中、左 0.25、右 0.75），左右各 1 根（中心）
+ *   引脚延伸长度为外框高度的 0.25~0.35 倍
+ */
 QPixmap IconHelper::chip(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -82,6 +149,18 @@ QPixmap IconHelper::chip(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制图层堆叠图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：3 层菱形（平行四边形视角）纵向堆叠
+ * - 每层为横向菱形：中心点对称，半宽 0.35×width，半高 0.11×height
+ * - 三层分别位于纵向 0.18、0.46、0.74 位置
+ * - 使用 QPolygonF 四点绘制闭合菱形
+ */
 QPixmap IconHelper::layers(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -100,6 +179,18 @@ QPixmap IconHelper::layers(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制月亮/夜间模式图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：圆形减去偏移小圆（月牙效果）
+ * - 主圆：半径为宽度的 0.38 倍，完整 360° 圆弧
+ * - 切割圆：向右偏移 0.35×rad，半径为 0.7×rad，绘制 60°~300° 弧
+ * - 使用 QPainterPath::subtracted() 布尔减法生成月牙路径
+ */
 QPixmap IconHelper::moon(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -118,6 +209,18 @@ QPixmap IconHelper::moon(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制太阳/日间模式图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：中心圆 + 8 根放射状光芒线
+ * - 中心圆：半径为宽度的 0.22 倍
+ * - 8 根光芒线：角度间隔 45°，内端距圆心 1.5×rad，外端 2.3×rad
+ * - 使用 cos/sin 计算端点坐标
+ */
 QPixmap IconHelper::sun(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -137,6 +240,17 @@ QPixmap IconHelper::sun(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制搜索/放大镜图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：圆形镜片 + 45° 斜向下手柄
+ * - 圆圈中心向左上偏移宽度的 0.08 倍，半径为 0.32×width
+ * - 手柄从圆圈右下边缘沿 45° 方向延伸，长度为半径的 0.7 倍
+ */
 QPixmap IconHelper::search(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -150,6 +264,17 @@ QPixmap IconHelper::search(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制对勾/确认图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：折线对勾（V 形右侧上扬）
+ * - 三点折线：左下 0.2×width → 中下 0.42×width, 0.72×height → 右上 0.8×width, 0.28×height
+ * - 使用 QPolygonF 三点绘制，不闭合
+ */
 QPixmap IconHelper::check(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -161,6 +286,17 @@ QPixmap IconHelper::check(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制云上传图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：三朵重叠椭圆云 + 向上箭头
+ * - 云体由三个不同位置的椭圆组成，模拟云朵轮廓
+ * - 箭头为垂直线 + 顶部两侧斜线（V 形箭头）
+ */
 QPixmap IconHelper::cloudUpload(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -177,6 +313,17 @@ QPixmap IconHelper::cloudUpload(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制刷新/循环箭头图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：开口圆弧 + 三角形箭头
+ * - 圆弧：从 30° 开始，逆时针 300°，形成接近闭合的环（顶部开口）
+ * - 箭头三角形位于圆弧末端右上方，指向圆弧切线方向
+ */
 QPixmap IconHelper::refresh(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -192,6 +339,17 @@ QPixmap IconHelper::refresh(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制文件/文档图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：带折角的文档轮廓
+ * - 主体为五边形：左上 → 右上（缩进 0.65×width） → 右下 → 左下 → 闭合
+ * - 折角线：从顶部 0.65×width 处垂直向下到 0.35×height，再水平向右到右边
+ */
 QPixmap IconHelper::file(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -209,6 +367,17 @@ QPixmap IconHelper::file(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制更多/三点菜单图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：水平排列的三个等距圆点
+ * - 圆点半径为宽度的 0.1 倍
+ * - 中心间距为宽度的 0.22 倍
+ */
 QPixmap IconHelper::more(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -219,6 +388,17 @@ QPixmap IconHelper::more(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制发送/纸飞机图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：三角箭头 + 底部横线
+ * - 上折线：从右侧 0.1×width 处指向中心左侧 0.15×width，再折向右下 0.1×width
+ * - 底部横线：从左侧 0.15×width 水平延伸到右侧 0.35×width（与折线中点对齐）
+ */
 QPixmap IconHelper::send(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -231,6 +411,16 @@ QPixmap IconHelper::send(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制停止/方块图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：实心矩形边框
+ * - 矩形边距为宽度的 0.25 倍，居中放置
+ */
 QPixmap IconHelper::stop(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -239,6 +429,19 @@ QPixmap IconHelper::stop(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制附件/回形针图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：长竖线 + 上下两个半圆弧
+ * - 竖线从顶部 0.15×height 延伸到中心下方
+ * - 上圆弧：中心偏下，绘制 0°~180°（上半圆）
+ * - 下圆弧：中心更偏下，绘制 180°~360°（下半圆）
+ * - 整体形成回形针/曲别针形状
+ */
 QPixmap IconHelper::attach(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -252,6 +455,18 @@ QPixmap IconHelper::attach(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制代码/尖括号图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：左尖括号 + 右尖括号 + 中间斜线
+ * - 左侧 "<"：两点折线，从 0.3×width 指向 0.1×width 中心再折回 0.3×width
+ * - 右侧 ">"：镜像对称
+ * - 中间斜线：从左上到右下，宽度 0.16×width，表示代码分隔符
+ */
 QPixmap IconHelper::code(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {
@@ -268,6 +483,17 @@ QPixmap IconHelper::code(int size, const QColor& color)
     });
 }
 
+/**
+ * @brief 绘制加号/添加图标
+ * @param size 图标尺寸
+ * @param color 线条颜色
+ * @return 渲染完成的 QPixmap
+ *
+ * @implementation
+ * 几何构成：垂直线 + 水平线十字交叉
+ * - 垂直线：从顶部 0.2×height 到底部 0.2×height，位于中心 x
+ * - 水平线：从左侧 0.2×width 到右侧 0.2×width，位于中心 y
+ */
 QPixmap IconHelper::plus(int size, const QColor& color)
 {
     return render(size, color, [](QPainter* p, const QRect& r) {

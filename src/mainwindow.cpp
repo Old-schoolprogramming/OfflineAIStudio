@@ -1,9 +1,27 @@
+/**
+ * @file mainwindow.cpp
+ * @brief 主窗口实现
+ *
+ * @details
+ * MainWindow是应用程序的主窗口，包含左侧导航栏、顶部标题栏和
+ * QStackedWidget管理的三个页面（对话、模型配置、技能导入）。
+ * 负责核心组件（LLM客户端、Orchestrator、Agent）的初始化与生命周期管理，
+ * 以及各页面间的导航协调和主题切换。
+ */
+
 #include "mainwindow.h"
 #include "ui/thememanager.h"
 #include "ui/iconhelper.h"
 #include <QMessageBox>
 #include <QApplication>
 
+/**
+ * @brief 构造函数
+ * @param parent 父QWidget
+ *
+ * 初始化核心组件（LLM客户端、Orchestrator、Agent），
+ * 设置UI布局和信号连接，并应用默认窗口尺寸与主题。
+ */
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
       m_currentPage(0)
@@ -16,10 +34,17 @@ MainWindow::MainWindow(QWidget *parent)
     setMinimumSize(900, 600);
     resize(1400, 900);
 
+    // 连接主题管理器的主题切换信号
     connect(ThemeManager::instance(), &ThemeManager::themeChanged,
             this, &MainWindow::onThemeChanged);
 }
 
+/**
+ * @brief 析构函数
+ *
+ * 手动释放核心组件资源（LLM客户端、编排器、各个Agent），
+ * 确保Qt对象树之外的裸指针得到正确清理。
+ */
 MainWindow::~MainWindow()
 {
     delete m_llmClient;
@@ -28,6 +53,13 @@ MainWindow::~MainWindow()
     delete m_computerAgent;
 }
 
+/**
+ * @brief 初始化核心逻辑组件
+ *
+ * 创建并配置LlmClient、Orchestrator及各类Agent实例，
+ * 建立Orchestrator与主窗口之间的信号/槽连接，
+ * 以便将任务计划、步骤执行状态及错误信息转发到UI层。
+ */
 void MainWindow::setupCoreComponents()
 {
     m_llmClient = new LlmClient(this);
@@ -43,6 +75,7 @@ void MainWindow::setupCoreComponents()
     m_orchestrator->addAgent(m_fileAgent);
     m_orchestrator->addAgent(m_computerAgent);
 
+    // 连接Orchestrator各阶段信号到主窗口槽函数
     connect(m_orchestrator, &Orchestrator::planGenerated,
             this, &MainWindow::onPlanGenerated);
     connect(m_orchestrator, &Orchestrator::stepStarted,
@@ -61,6 +94,12 @@ void MainWindow::setupCoreComponents()
             this, &MainWindow::onOrchestratorError);
 }
 
+/**
+ * @brief 设置主窗口整体UI布局
+ *
+ * 创建中央QWidget并采用水平布局，左侧为导航边栏，右侧为主内容区。
+ * 主内容区由setupMainArea()进一步划分为标题栏和页面栈。
+ */
 void MainWindow::setupUI()
 {
     QWidget* centralWidget = new QWidget(this);
@@ -77,6 +116,12 @@ void MainWindow::setupUI()
     mainLayout->addWidget(m_mainArea, 1);
 }
 
+/**
+ * @brief 设置左侧导航边栏
+ *
+ * 构建固定宽度的垂直边栏，包含Logo、三个导航按钮（对话/模型配置/技能导入）
+ * 及底部的主题切换按钮。导航按钮通过onNavButtonClicked切换页面。
+ */
 void MainWindow::setupSidebar()
 {
     m_sidebar = new QWidget(this);
@@ -88,6 +133,7 @@ void MainWindow::setupSidebar()
     sidebarLayout->setSpacing(4);
     sidebarLayout->setAlignment(Qt::AlignHCenter);
 
+    // Logo区域
     QLabel* logoLabel = new QLabel(m_sidebar);
     logoLabel->setFixedSize(32, 32);
     logoLabel->setPixmap(IconHelper::logo(32, QColor("#FFFFFF")));
@@ -95,6 +141,7 @@ void MainWindow::setupSidebar()
     sidebarLayout->addWidget(logoLabel, 0, Qt::AlignHCenter);
     sidebarLayout->addSpacing(8);
 
+    // 主界面导航按钮
     m_navMain = new QPushButton(m_sidebar);
     m_navMain->setFixedSize(40, 40);
     m_navMain->setObjectName("navButton");
@@ -105,6 +152,7 @@ void MainWindow::setupSidebar()
     connect(m_navMain, &QPushButton::clicked, this, [this]() { onNavButtonClicked(0); });
     sidebarLayout->addWidget(m_navMain, 0, Qt::AlignHCenter);
 
+    // 模型配置导航按钮
     m_navModel = new QPushButton(m_sidebar);
     m_navModel->setFixedSize(40, 40);
     m_navModel->setObjectName("navButton");
@@ -115,6 +163,7 @@ void MainWindow::setupSidebar()
     connect(m_navModel, &QPushButton::clicked, this, [this]() { onNavButtonClicked(1); });
     sidebarLayout->addWidget(m_navModel, 0, Qt::AlignHCenter);
 
+    // 技能导入导航按钮
     m_navSkill = new QPushButton(m_sidebar);
     m_navSkill->setFixedSize(40, 40);
     m_navSkill->setObjectName("navButton");
@@ -127,6 +176,7 @@ void MainWindow::setupSidebar()
 
     sidebarLayout->addStretch();
 
+    // 主题切换按钮
     m_themeToggle = new QPushButton(m_sidebar);
     m_themeToggle->setFixedSize(40, 40);
     m_themeToggle->setObjectName("navButton");
@@ -139,6 +189,12 @@ void MainWindow::setupSidebar()
     updateNavButtons();
 }
 
+/**
+ * @brief 设置右侧主内容区
+ *
+ * 主内容区采用垂直布局，顶部为标题栏（setupHeader），
+ * 下方为QStackedWidget页面栈（setupPages），用于承载对话、模型配置、技能导入三个页面。
+ */
 void MainWindow::setupMainArea()
 {
     m_mainArea = new QWidget(this);
@@ -155,6 +211,12 @@ void MainWindow::setupMainArea()
     mainLayout->addWidget(m_stack, 1);
 }
 
+/**
+ * @brief 设置顶部标题栏
+ *
+ * 构建固定高度的水平标题栏，左侧显示当前页面标题，
+ * 右侧包含搜索输入框和当前主题模式标签。
+ */
 void MainWindow::setupHeader()
 {
     m_header = new QWidget(m_mainArea);
@@ -172,6 +234,7 @@ void MainWindow::setupHeader()
 
     headerLayout->addStretch();
 
+    // 搜索输入框
     m_searchInput = new QLineEdit(m_header);
     m_searchInput->setObjectName("headerSearch");
     m_searchInput->setPlaceholderText("搜索...");
@@ -179,6 +242,7 @@ void MainWindow::setupHeader()
     connect(m_searchInput, &QLineEdit::textChanged, this, &MainWindow::onSearchTextChanged);
     headerLayout->addWidget(m_searchInput);
 
+    // 主题模式标签
     m_themeLabel = new QLabel(
         ThemeManager::instance()->currentTheme() == ThemeManager::Dark ? "深色模式" : "浅色模式",
         m_header
@@ -188,6 +252,12 @@ void MainWindow::setupHeader()
     headerLayout->addWidget(m_themeLabel);
 }
 
+/**
+ * @brief 设置QStackedWidget页面栈
+ *
+ * 创建ChatPage、ModelConfigPage、SkillImportPage三个页面实例，
+ * 按顺序添加到QStackedWidget中，并连接各页面发出的信号到主窗口对应槽函数。
+ */
 void MainWindow::setupPages()
 {
     m_stack = new QStackedWidget(m_mainArea);
@@ -201,15 +271,23 @@ void MainWindow::setupPages()
     m_stack->addWidget(m_modelPage);
     m_stack->addWidget(m_skillPage);
 
+    // 连接对话页面的用户操作信号
     connect(m_chatPage, &ChatPage::sendMessage, this, &MainWindow::onMessageSent);
     connect(m_chatPage, &ChatPage::stopClicked, this, &MainWindow::onStopClicked);
     connect(m_chatPage, &ChatPage::newChatClicked, this, &MainWindow::onNewChatClicked);
 
+    // 连接模型配置页面的设置变更信号
     connect(m_modelPage, &ModelConfigPage::settingsChanged, this, &MainWindow::onSettingsChanged);
     connect(m_modelPage, &ModelConfigPage::testConnectionClicked, this, &MainWindow::onTestConnection);
     connect(m_modelPage, &ModelConfigPage::restoreDefaultsClicked, this, &MainWindow::onRestoreDefaults);
 }
 
+/**
+ * @brief 应用动态样式表
+ *
+ * 根据ThemeManager当前主题获取颜色令牌，
+ * 为侧边栏和主内容区（含标题栏、搜索框、页面栈）构建并设置QSS样式。
+ */
 void MainWindow::applyStyles()
 {
     ThemeManager* tm = ThemeManager::instance();
@@ -240,6 +318,13 @@ void MainWindow::applyStyles()
     ).arg(bg, bg2, bg3, bdr, pri, pri, txtPri, txtSec, txtTer));
 }
 
+/**
+ * @brief 更新导航按钮的图标与激活状态样式
+ *
+ * 根据m_currentPage判断当前激活的页面索引，
+ * 为三个导航按钮设置对应的active属性及彩色/灰色图标，
+ * 并强制刷新样式以应用QSS中的[active=true]状态。
+ */
 void MainWindow::updateNavButtons()
 {
     bool isDark = ThemeManager::instance()->currentTheme() == ThemeManager::Dark;
@@ -254,12 +339,19 @@ void MainWindow::updateNavButtons()
     m_navModel->setIcon(QIcon(IconHelper::chip(20, m_currentPage == 1 ? activeColor : inactiveColor)));
     m_navSkill->setIcon(QIcon(IconHelper::layers(20, m_currentPage == 2 ? activeColor : inactiveColor)));
 
+    // 强制重绘按钮以应用QSS属性变化
     for (auto* btn : {m_navMain, m_navModel, m_navSkill}) {
         btn->style()->unpolish(btn);
         btn->style()->polish(btn);
     }
 }
 
+/**
+ * @brief 导航按钮点击槽函数
+ * @param pageIndex 目标页面索引（0=对话, 1=模型配置, 2=技能导入）
+ *
+ * 切换QStackedWidget当前页面，同步更新标题栏文本及导航按钮状态。
+ */
 void MainWindow::onNavButtonClicked(int pageIndex)
 {
     m_currentPage = pageIndex;
@@ -271,11 +363,22 @@ void MainWindow::onNavButtonClicked(int pageIndex)
     updateNavButtons();
 }
 
+/**
+ * @brief 主题切换按钮点击槽函数
+ *
+ * 调用ThemeManager单例切换当前主题（深色/浅色）。
+ */
 void MainWindow::onThemeToggleClicked()
 {
     ThemeManager::instance()->toggleTheme();
 }
 
+/**
+ * @brief 主题变化响应槽函数
+ *
+ * 重新应用窗口样式、更新主题切换按钮图标、刷新主题标签文本，
+ * 并同步更新导航按钮及全局QApplication样式表。
+ */
 void MainWindow::onThemeChanged()
 {
     applyStyles();
@@ -289,17 +392,35 @@ void MainWindow::onThemeChanged()
     qApp->setStyleSheet(ThemeManager::instance()->styleSheet());
 }
 
+/**
+ * @brief 新建对话按钮点击槽函数
+ *
+ * 清空对话页面的聊天记录与任务计划状态。
+ */
 void MainWindow::onNewChatClicked()
 {
     m_chatPage->clearChat();
     m_chatPage->clearPlan();
 }
 
+/**
+ * @brief 搜索文本变化槽函数
+ * @param text 当前搜索框文本
+ *
+ * 当前为占位实现，未启用实际搜索逻辑。
+ */
 void MainWindow::onSearchTextChanged(const QString& text)
 {
     Q_UNUSED(text)
 }
 
+/**
+ * @brief 用户发送消息槽函数
+ * @param message 用户输入的原始消息文本
+ *
+ * 若Orchestrator未处于处理状态，则在对话页面追加用户消息，
+ * 显示停止按钮并将消息提交给Orchestrator进行异步处理。
+ */
 void MainWindow::onMessageSent(const QString& message)
 {
     if (m_orchestrator->isProcessing()) {
@@ -312,12 +433,23 @@ void MainWindow::onMessageSent(const QString& message)
     m_orchestrator->processQuery(message);
 }
 
+/**
+ * @brief 停止执行按钮点击槽函数
+ *
+ * 调用Orchestrator停止当前任务执行，并隐藏停止按钮。
+ */
 void MainWindow::onStopClicked()
 {
     m_orchestrator->stopExecution();
     m_chatPage->showStopButton(false);
 }
 
+/**
+ * @brief 任务计划生成完成槽函数
+ * @param plan 生成的任务计划对象
+ *
+ * 将计划同步到对话页面，并在聊天区域渲染计划概览卡片（含步骤总数）。
+ */
 void MainWindow::onPlanGenerated(const TaskPlan& plan)
 {
     m_chatPage->setPlan(plan);
@@ -329,11 +461,25 @@ void MainWindow::onPlanGenerated(const TaskPlan& plan)
     );
 }
 
+/**
+ * @brief 步骤开始执行槽函数
+ * @param stepId 开始执行的步骤ID
+ *
+ * 更新对话页面中对应步骤的状态为Running。
+ */
 void MainWindow::onStepStarted(int stepId)
 {
     m_chatPage->updateStepStatus(stepId, StepStatus::Running);
 }
 
+/**
+ * @brief 步骤输出内容槽函数
+ * @param stepId 产生输出的步骤ID
+ * @param output 步骤输出的原始文本
+ *
+ * 根据当前计划查找步骤描述，若输出以"==="开头则渲染步骤标题，
+ * 否则将输出内容追加到对应步骤的日志区域。
+ */
 void MainWindow::onStepOutput(int stepId, const QString& output)
 {
     QString description;
@@ -351,6 +497,13 @@ void MainWindow::onStepOutput(int stepId, const QString& output)
     }
 }
 
+/**
+ * @brief 步骤执行成功完成槽函数
+ * @param stepId 完成的步骤ID
+ * @param result 步骤执行结果，包含result等字段
+ *
+ * 更新步骤状态为Completed，并将结果摘要（限制100字符）显示在对话页面。
+ */
 void MainWindow::onStepCompleted(int stepId, const QVariantMap& result)
 {
     m_chatPage->updateStepStatus(stepId, StepStatus::Completed);
@@ -361,12 +514,26 @@ void MainWindow::onStepCompleted(int stepId, const QVariantMap& result)
     m_chatPage->appendStepResult(stepId, true, resultMsg);
 }
 
+/**
+ * @brief 步骤执行失败槽函数
+ * @param stepId 失败的步骤ID
+ * @param error 错误描述文本
+ *
+ * 更新步骤状态为Failed，并将错误信息显示在对话页面。
+ */
 void MainWindow::onStepFailed(int stepId, const QString& error)
 {
     m_chatPage->updateStepStatus(stepId, StepStatus::Failed);
     m_chatPage->appendStepResult(stepId, false, error);
 }
 
+/**
+ * @brief 整个计划执行完成槽函数
+ * @param plan 执行完毕的任务计划
+ *
+ * 统计各步骤的成功/失败数量，隐藏停止按钮，
+ * 并在对话页面渲染任务完成的总结卡片。
+ */
 void MainWindow::onPlanCompleted(const TaskPlan& plan)
 {
     m_chatPage->showStopButton(false);
@@ -386,11 +553,23 @@ void MainWindow::onPlanCompleted(const TaskPlan& plan)
     );
 }
 
+/**
+ * @brief Orchestrator收到AI消息槽函数
+ * @param message AI回复的文本内容
+ *
+ * 将AI消息以非用户消息形式追加到对话页面。
+ */
 void MainWindow::onOrchestratorMessage(const QString& message)
 {
     m_chatPage->addMessage("AI", message, false);
 }
 
+/**
+ * @brief Orchestrator发生错误槽函数
+ * @param error 错误描述文本
+ *
+ * 隐藏停止按钮，并在对话页面渲染红色错误提示卡片。
+ */
 void MainWindow::onOrchestratorError(const QString& error)
 {
     m_chatPage->showStopButton(false);
@@ -402,6 +581,12 @@ void MainWindow::onOrchestratorError(const QString& error)
     );
 }
 
+/**
+ * @brief 模型设置变更保存槽函数
+ *
+ * 从模型配置页面读取最新参数（API地址、模型名、最大Token数、温度值），
+ * 同步到LlmClient实例，并弹出保存成功提示。
+ */
 void MainWindow::onSettingsChanged()
 {
     m_llmClient->setApiUrl(m_modelPage->apiUrl());
@@ -412,11 +597,21 @@ void MainWindow::onSettingsChanged()
     QMessageBox::information(this, "设置已保存", "模型配置已成功保存。");
 }
 
+/**
+ * @brief 测试连接按钮点击槽函数
+ *
+ * 弹出信息框提示当前正在测试与模型的连接，并显示目标API地址。
+ */
 void MainWindow::onTestConnection()
 {
     QMessageBox::information(this, "测试连接", "正在测试与模型的连接...\n地址: " + m_modelPage->apiUrl());
 }
 
+/**
+ * @brief 恢复默认设置按钮点击槽函数
+ *
+ * 弹出信息框提示已恢复默认设置。
+ */
 void MainWindow::onRestoreDefaults()
 {
     QMessageBox::information(this, "恢复默认", "已恢复默认设置。");

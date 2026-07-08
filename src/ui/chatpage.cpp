@@ -1,3 +1,12 @@
+/**
+ * @file chatpage.cpp
+ * @brief 对话页面实现
+ *
+ * @details
+ * ChatPage提供完整的对话交互界面，包含左侧会话列表侧边栏和右侧聊天区域。
+ * 支持消息渲染（用户/AI）、任务计划展示、步骤状态跟踪、主题自适应及会话管理。
+ */
+
 #include "chatpage.h"
 #include "thememanager.h"
 #include "iconhelper.h"
@@ -7,6 +16,13 @@
 #include <QScrollBar>
 #include <QFrame>
 
+/**
+ * @brief 构造函数
+ * @param parent 父QWidget
+ *
+ * 初始化UI并应用主题，预置若干示例会话数据，
+ * 连接ThemeManager主题变化信号以支持动态换肤。
+ */
 ChatPage::ChatPage(QWidget *parent)
     : QWidget(parent),
       m_currentConversationIndex(0)
@@ -14,7 +30,7 @@ ChatPage::ChatPage(QWidget *parent)
     setupUI();
     applyTheme();
 
-    // Add sample conversations
+    // 预置示例会话数据
     m_conversations.append({"Python 代码优化", "今天 14:30", {}, true});
     m_conversations.append({"解释 Transformer 架构", "昨天", {}, false});
     m_conversations.append({"撰写技术文档", "昨天", {}, false});
@@ -26,10 +42,19 @@ ChatPage::ChatPage(QWidget *parent)
             this, &ChatPage::onThemeChanged);
 }
 
+/**
+ * @brief 析构函数
+ */
 ChatPage::~ChatPage()
 {
 }
 
+/**
+ * @brief 设置对话页面整体UI布局
+ *
+ * 采用水平布局，左侧为会话列表面板（setupSidebar），
+ * 右侧为聊天与输入区域（setupChatArea），无外边距以贴合父容器。
+ */
 void ChatPage::setupUI()
 {
     QHBoxLayout* mainLayout = new QHBoxLayout(this);
@@ -43,6 +68,15 @@ void ChatPage::setupUI()
     mainLayout->addWidget(m_chatArea, 1);
 }
 
+/**
+ * @brief 设置左侧会话列表侧边栏
+ *
+ * 构建固定宽度的垂直侧边栏，包含：
+ * - 顶部标题栏（标题+新建按钮）
+ * - 分隔线
+ * - 会话列表（QListWidget）
+ * - 底部状态栏（在线状态指示）
+ */
 void ChatPage::setupSidebar()
 {
     m_sidebar = new QWidget(this);
@@ -53,7 +87,7 @@ void ChatPage::setupSidebar()
     sidebarLayout->setContentsMargins(0, 0, 0, 0);
     sidebarLayout->setSpacing(0);
 
-    // Header
+    // 顶部标题栏
     QWidget* headerWidget = new QWidget(m_sidebar);
     headerWidget->setObjectName("sidebarHeader");
     QHBoxLayout* headerLayout = new QHBoxLayout(headerWidget);
@@ -76,14 +110,14 @@ void ChatPage::setupSidebar()
 
     sidebarLayout->addWidget(headerWidget);
 
-    // Separator
+    // 分隔线
     QFrame* separator = new QFrame(m_sidebar);
     separator->setFrameShape(QFrame::HLine);
     separator->setFixedHeight(1);
     separator->setObjectName("sidebarSeparator");
     sidebarLayout->addWidget(separator);
 
-    // Conversation list
+    // 会话列表
     m_conversationList = new QListWidget(m_sidebar);
     m_conversationList->setObjectName("conversationList");
     m_conversationList->setFrameShape(QFrame::NoFrame);
@@ -92,7 +126,7 @@ void ChatPage::setupSidebar()
     connect(m_conversationList, &QListWidget::itemClicked, this, &ChatPage::onConversationClicked);
     sidebarLayout->addWidget(m_conversationList, 1);
 
-    // Bottom status
+    // 底部状态栏
     QWidget* statusWidget = new QWidget(m_sidebar);
     statusWidget->setObjectName("statusWidget");
     QHBoxLayout* statusLayout = new QHBoxLayout(statusWidget);
@@ -113,6 +147,12 @@ void ChatPage::setupSidebar()
     sidebarLayout->addWidget(statusWidget);
 }
 
+/**
+ * @brief 设置右侧聊天与输入区域
+ *
+ * 采用垂直布局，上方为只读聊天显示区（QTextBrowser），
+ * 下方为输入面板，包含消息输入框及一行功能控制按钮（附件/代码/发送/停止/模型选择）。
+ */
 void ChatPage::setupChatArea()
 {
     m_chatArea = new QWidget(this);
@@ -122,7 +162,7 @@ void ChatPage::setupChatArea()
     chatLayout->setContentsMargins(0, 0, 0, 0);
     chatLayout->setSpacing(0);
 
-    // Chat display
+    // 聊天显示区
     m_chatDisplay = new QTextBrowser(m_chatArea);
     m_chatDisplay->setObjectName("chatDisplay");
     m_chatDisplay->setFrameShape(QFrame::NoFrame);
@@ -133,13 +173,14 @@ void ChatPage::setupChatArea()
     );
     chatLayout->addWidget(m_chatDisplay, 1);
 
-    // Input area
+    // 输入面板
     QWidget* inputWidget = new QWidget(m_chatArea);
     inputWidget->setObjectName("inputWidget");
     QVBoxLayout* inputLayout = new QVBoxLayout(inputWidget);
     inputLayout->setContentsMargins(20, 12, 20, 12);
     inputLayout->setSpacing(8);
 
+    // 消息输入框
     m_messageInput = new QLineEdit(inputWidget);
     m_messageInput->setObjectName("messageInput");
     m_messageInput->setPlaceholderText("输入消息，按 Enter 发送...");
@@ -147,11 +188,11 @@ void ChatPage::setupChatArea()
     connect(m_messageInput, &QLineEdit::returnPressed, this, &ChatPage::onSendClicked);
     inputLayout->addWidget(m_messageInput);
 
-    // Controls row
+    // 功能控制按钮行
     QHBoxLayout* controlsLayout = new QHBoxLayout();
     controlsLayout->setSpacing(8);
 
-    // Left controls
+    // 左侧：附件与代码片段按钮
     m_attachButton = new QPushButton(inputWidget);
     m_attachButton->setObjectName("iconButton");
     m_attachButton->setFixedSize(32, 32);
@@ -168,7 +209,7 @@ void ChatPage::setupChatArea()
 
     controlsLayout->addStretch();
 
-    // Right controls
+    // 右侧：发送、停止及模型选择器
     m_sendButton = new QPushButton(inputWidget);
     m_sendButton->setObjectName("primaryButton");
     m_sendButton->setFixedSize(32, 32);
@@ -197,6 +238,12 @@ void ChatPage::setupChatArea()
     chatLayout->addWidget(inputWidget);
 }
 
+/**
+ * @brief 应用当前主题样式
+ *
+ * 从ThemeManager获取颜色令牌，为侧边栏、聊天区、输入控件及按钮构建QSS，
+ * 同时更新图标以匹配当前主题。
+ */
 void ChatPage::applyTheme()
 {
     ThemeManager* tm = ThemeManager::instance();
@@ -238,12 +285,19 @@ void ChatPage::applyTheme()
         "QLabel#modelSelector { color: %7; border-color: %4; background-color: %2; }"
     ).arg(bg, bg2, bg3, bdr, pri, txtPri, pri, txtSec, txtTer));
 
+    // 更新工具栏图标
     QColor iconColor = ThemeManager::instance()->textSecondary();
     m_attachButton->setIcon(QIcon(IconHelper::attach(16, iconColor)));
     m_codeButton->setIcon(QIcon(IconHelper::code(16, iconColor)));
     m_sendButton->setIcon(QIcon(IconHelper::send(18, QColor("#FFFFFF"))));
 }
 
+/**
+ * @brief 刷新会话列表UI
+ *
+ * 清空列表后根据m_conversations重新构建每一项。
+ * 每个会话项使用自定义QPushButton作为item widget，展示标题、时间戳及激活状态高亮。
+ */
 void ChatPage::updateConversationList()
 {
     m_conversationList->clear();
@@ -268,23 +322,27 @@ void ChatPage::updateConversationList()
         layout->setContentsMargins(12, 8, 12, 8);
         layout->setSpacing(2);
 
+        // 会话标题
         QLabel* titleLabel = new QLabel(conv.title, btn);
         titleLabel->setStyleSheet(QString("font-size: 13px; font-weight: %1; color: %2;")
             .arg(conv.isActive ? "600" : "500", txtPri));
         titleLabel->setAlignment(Qt::AlignLeft);
         layout->addWidget(titleLabel);
 
+        // 时间戳
         QLabel* timeLabel = new QLabel(conv.timestamp, btn);
         timeLabel->setStyleSheet(QString("font-size: 11px; color: %1;").arg(txtTer));
         timeLabel->setAlignment(Qt::AlignLeft);
         layout->addWidget(timeLabel);
 
+        // 根据激活状态设置背景与左边框
         QString btnStyle = conv.isActive ?
             QString("background-color: %1; border-left: 3px solid %2; border-radius: 8px;")
                 .arg(priSub, pri) :
             QString("background-color: transparent; border-radius: 8px;");
         btn->setStyleSheet(btnStyle);
 
+        // 点击后切换当前会话并刷新列表
         connect(btn, &QPushButton::clicked, this, [this, i]() {
             onConversationClicked(nullptr);
             m_currentConversationIndex = i;
@@ -299,11 +357,22 @@ void ChatPage::updateConversationList()
     }
 }
 
+/**
+ * @brief 向聊天区域追加一条消息
+ * @param sender 发送者名称（如"用户"或"AI"）
+ * @param content 消息原始文本内容
+ * @param isUser true表示用户消息，false表示AI消息
+ *
+ * 使用HTML构建气泡式消息卡片，包含头像、发送者、时间戳及内容。
+ * 用户消息右对齐（蓝色气泡），AI消息左对齐（带边框浅色气泡）。
+ * 追加后自动滚动到底部。
+ */
 void ChatPage::addMessage(const QString& sender, const QString& content, bool isUser)
 {
     QString time = QDateTime::currentDateTime().toString("HH:mm");
     ThemeManager* tm = ThemeManager::instance();
 
+    // 根据消息来源选择颜色与头像
     QString avatarBg = isUser ? tm->primary().name() : "#2563EB";
     QString avatarText = isUser ? "U" : "AI";
     QString msgBg = isUser ? tm->primary().name() : tm->bgSecondary().name();
@@ -318,6 +387,7 @@ void ChatPage::addMessage(const QString& sender, const QString& content, bool is
 
     QString messageHtml;
     if (isUser) {
+        // 用户消息：右对齐，尖角在右下
         messageHtml = QString(
             "<div style='display: flex; flex-direction: row-reverse; align-items: flex-start; gap: 10px; margin: 12px 0;'>"
             "%1"
@@ -328,6 +398,7 @@ void ChatPage::addMessage(const QString& sender, const QString& content, bool is
             "</div>"
         ).arg(avatarHtml, msgBg, nameColor, sender, timeColor, time, msgColor, content.toHtmlEscaped());
     } else {
+        // AI消息：左对齐，尖角在左下，带边框
         messageHtml = QString(
             "<div style='display: flex; align-items: flex-start; gap: 10px; margin: 12px 0;'>"
             "%1"
@@ -341,10 +412,17 @@ void ChatPage::addMessage(const QString& sender, const QString& content, bool is
 
     m_chatDisplay->append(messageHtml);
 
+    // 自动滚动到底部
     QScrollBar* sb = m_chatDisplay->verticalScrollBar();
     sb->setValue(sb->maximum());
 }
 
+/**
+ * @brief 追加原始HTML输出到聊天显示区
+ * @param text 要追加的HTML字符串
+ *
+ * 追加后自动滚动到底部。
+ */
 void ChatPage::appendOutput(const QString& text)
 {
     m_chatDisplay->append(text);
@@ -352,6 +430,13 @@ void ChatPage::appendOutput(const QString& text)
     sb->setValue(sb->maximum());
 }
 
+/**
+ * @brief 追加步骤标题卡片
+ * @param stepId 步骤ID
+ * @param description 步骤描述
+ *
+ * 以主题色边框卡片形式渲染步骤开始信息，包含步骤ID、描述及当前时间。
+ */
 void ChatPage::appendStepHeader(int stepId, const QString& description)
 {
     QString time = QDateTime::currentDateTime().toString("HH:mm:ss");
@@ -370,6 +455,13 @@ void ChatPage::appendStepHeader(int stepId, const QString& description)
     appendOutput(html);
 }
 
+/**
+ * @brief 追加步骤日志输出
+ * @param stepId 步骤ID（当前仅保留接口一致性，未在UI中单独按stepId分组）
+ * @param output 步骤输出的原始文本
+ *
+ * 将原始文本转义为HTML并替换换行为<br>，以等宽字体样式追加到聊天区。
+ */
 void ChatPage::appendStepOutput(int stepId, const QString& output)
 {
     Q_UNUSED(stepId)
@@ -386,6 +478,14 @@ void ChatPage::appendStepOutput(int stepId, const QString& output)
     appendOutput(html);
 }
 
+/**
+ * @brief 追加步骤执行结果
+ * @param stepId 步骤ID（当前仅保留接口一致性）
+ * @param success true表示成功，false表示失败
+ * @param message 结果摘要或错误信息
+ *
+ * 根据成功或失败状态渲染绿色/红色边框的结果徽章卡片。
+ */
 void ChatPage::appendStepResult(int stepId, bool success, const QString& message)
 {
     Q_UNUSED(stepId)
@@ -406,21 +506,38 @@ void ChatPage::appendStepResult(int stepId, bool success, const QString& message
     appendOutput(html);
 }
 
+/**
+ * @brief 清空聊天显示区
+ */
 void ChatPage::clearChat()
 {
     m_chatDisplay->clear();
 }
 
+/**
+ * @brief 清空输出（与clearChat同义）
+ */
 void ChatPage::clearOutput()
 {
     clearChat();
 }
 
+/**
+ * @brief 设置当前任务计划
+ * @param plan 任务计划对象
+ */
 void ChatPage::setPlan(const TaskPlan& plan)
 {
     m_currentPlan = plan;
 }
 
+/**
+ * @brief 更新指定步骤的状态
+ * @param stepId 目标步骤ID
+ * @param status 新的步骤状态
+ *
+ * 在m_currentPlan.steps中查找匹配stepId的条目并更新其状态。
+ */
 void ChatPage::updateStepStatus(int stepId, StepStatus status)
 {
     for (auto& step : m_currentPlan.steps) {
@@ -431,23 +548,41 @@ void ChatPage::updateStepStatus(int stepId, StepStatus status)
     }
 }
 
+/**
+ * @brief 清空当前任务计划
+ */
 void ChatPage::clearPlan()
 {
     m_currentPlan = TaskPlan();
 }
 
+/**
+ * @brief 设置输入区域启用状态
+ * @param enabled true为启用，false为禁用
+ *
+ * 同步控制消息输入框和发送按钮的可用性。
+ */
 void ChatPage::setInputEnabled(bool enabled)
 {
     m_messageInput->setEnabled(enabled);
     m_sendButton->setEnabled(enabled);
 }
 
+/**
+ * @brief 控制停止按钮的显隐
+ * @param show true显示停止按钮并隐藏发送按钮，false则相反
+ */
 void ChatPage::showStopButton(bool show)
 {
     m_stopButton->setVisible(show);
     m_sendButton->setVisible(!show);
 }
 
+/**
+ * @brief 发送按钮点击槽函数
+ *
+ * 获取输入框文本并去除首尾空白，若非空则发射sendMessage信号并清空输入框。
+ */
 void ChatPage::onSendClicked()
 {
     QString message = m_messageInput->text().trimmed();
@@ -457,11 +592,22 @@ void ChatPage::onSendClicked()
     }
 }
 
+/**
+ * @brief 停止按钮点击槽函数
+ *
+ * 发射stopClicked信号，由上层主窗口接收并中断Orchestrator执行。
+ */
 void ChatPage::onStopClicked()
 {
     emit stopClicked();
 }
 
+/**
+ * @brief 新建会话按钮点击槽函数
+ *
+ * 将所有现有会话设为非激活，在列表头部插入"新对话"并设为激活，
+ * 限制最大会话数为20，随后刷新列表、清空聊天区并发射newChatClicked信号。
+ */
 void ChatPage::onNewChatClicked()
 {
     for (auto& conv : m_conversations) {
@@ -476,6 +622,12 @@ void ChatPage::onNewChatClicked()
     emit newChatClicked();
 }
 
+/**
+ * @brief 会话列表项点击槽函数
+ * @param item 被点击的QListWidgetItem（可能为nullptr）
+ *
+ * 根据item携带的UserRole索引激活对应会话，刷新列表并发射conversationSelected信号。
+ */
 void ChatPage::onConversationClicked(QListWidgetItem* item)
 {
     if (!item) return;
@@ -488,6 +640,11 @@ void ChatPage::onConversationClicked(QListWidgetItem* item)
     emit conversationSelected(index);
 }
 
+/**
+ * @brief 主题变化响应槽函数
+ *
+ * 重新应用主题样式并刷新会话列表以更新各会话项的颜色。
+ */
 void ChatPage::onThemeChanged()
 {
     applyTheme();

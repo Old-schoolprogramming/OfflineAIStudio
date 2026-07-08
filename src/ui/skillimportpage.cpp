@@ -1,9 +1,24 @@
+/**
+ * @file skillimportpage.cpp
+ * @brief 技能导入页面实现
+ *
+ * @details
+ * SkillImportPage提供技能包的上传导入、路径输入导入及已安装技能的管理功能。
+ * 页面采用滚动布局，包含拖拽上传区、路径输入行、已安装技能网格及底部信息栏。
+ */
+
 #include "skillimportpage.h"
 #include "thememanager.h"
 #include "iconhelper.h"
 #include <QFileDialog>
 #include <QFrame>
 
+/**
+ * @brief 构造函数
+ * @param parent 父QWidget
+ *
+ * 初始化UI、应用主题并连接ThemeManager主题变化信号。
+ */
 SkillImportPage::SkillImportPage(QWidget *parent)
     : QWidget(parent)
 {
@@ -13,10 +28,23 @@ SkillImportPage::SkillImportPage(QWidget *parent)
             this, &SkillImportPage::onThemeChanged);
 }
 
+/**
+ * @brief 析构函数
+ */
 SkillImportPage::~SkillImportPage()
 {
 }
 
+/**
+ * @brief 设置技能导入页面整体UI布局
+ *
+ * 采用QScrollArea承载垂直内容布局，依次包含：
+ * - 拖拽上传区（setupUploadZone）
+ * - 路径输入行（手动输入技能配置文件路径并导入）
+ * - 分隔线与"已安装的技能"标题
+ * - 技能卡片网格（setupSkillGrid）
+ * - 底部信息栏（统计与外部链接）
+ */
 void SkillImportPage::setupUI()
 {
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
@@ -39,7 +67,7 @@ void SkillImportPage::setupUI()
 
     contentLayout->addWidget(m_uploadZone);
 
-    // Path input row
+    // 路径输入行
     QHBoxLayout* pathLayout = new QHBoxLayout();
     pathLayout->setSpacing(12);
     pathLayout->setContentsMargins(0, 16, 0, 0);
@@ -61,7 +89,7 @@ void SkillImportPage::setupUI()
 
     contentLayout->addLayout(pathLayout);
 
-    // Divider
+    // 分隔线：左右横线 + 中间标题文字
     QHBoxLayout* dividerLayout = new QHBoxLayout();
     dividerLayout->setContentsMargins(0, 32, 0, 24);
     dividerLayout->setSpacing(16);
@@ -83,7 +111,7 @@ void SkillImportPage::setupUI()
     contentLayout->addLayout(dividerLayout);
     contentLayout->addLayout(m_skillGrid);
 
-    // Bottom info bar
+    // 底部信息栏
     QHBoxLayout* bottomLayout = new QHBoxLayout();
     bottomLayout->setContentsMargins(0, 24, 0, 0);
     bottomLayout->setSpacing(8);
@@ -105,6 +133,12 @@ void SkillImportPage::setupUI()
     mainLayout->addWidget(m_scrollArea);
 }
 
+/**
+ * @brief 设置拖拽上传区域
+ *
+ * 构建固定高度的垂直居中面板，包含上传图标、主标题、格式提示及选择文件按钮。
+ * 设置ObjectName为uploadZone以便QSS统一控制悬停与边框样式。
+ */
 void SkillImportPage::setupUploadZone()
 {
     m_uploadZone = new QWidget(m_contentWidget);
@@ -116,21 +150,25 @@ void SkillImportPage::setupUploadZone()
     zoneLayout->setAlignment(Qt::AlignCenter);
     zoneLayout->setSpacing(12);
 
+    // 上传图标
     QLabel* iconLabel = new QLabel(m_uploadZone);
     iconLabel->setPixmap(IconHelper::cloudUpload(48, QColor("#94A3B8")));
     iconLabel->setAlignment(Qt::AlignCenter);
     zoneLayout->addWidget(iconLabel);
 
+    // 主标题
     QLabel* titleLabel = new QLabel("拖拽技能包到此处，或点击上传", m_uploadZone);
     titleLabel->setStyleSheet("font-size: 15px; font-weight: 600;");
     titleLabel->setAlignment(Qt::AlignCenter);
     zoneLayout->addWidget(titleLabel);
 
+    // 格式提示
     QLabel* hintLabel = new QLabel("支持 .zip, .json, .yaml 格式的技能配置文件", m_uploadZone);
     hintLabel->setStyleSheet("font-size: 13px;");
     hintLabel->setAlignment(Qt::AlignCenter);
     zoneLayout->addWidget(hintLabel);
 
+    // 选择文件按钮
     QPushButton* selectBtn = new QPushButton("选择文件", m_uploadZone);
     selectBtn->setObjectName("outlineButton");
     selectBtn->setCursor(Qt::PointingHandCursor);
@@ -140,6 +178,11 @@ void SkillImportPage::setupUploadZone()
     m_uploadZone->setToolTip("点击上传技能文件");
 }
 
+/**
+ * @brief 设置已安装技能网格
+ *
+ * 预置示例技能数据，并调用createSkillCard为每个技能创建两列卡片布局。
+ */
 void SkillImportPage::setupSkillGrid()
 {
     m_skillGrid = new QGridLayout();
@@ -159,6 +202,20 @@ void SkillImportPage::setupSkillGrid()
     }
 }
 
+/**
+ * @brief 创建单个技能卡片并添加到网格
+ * @param name 技能名称
+ * @param version 技能版本号
+ * @param description 技能描述文本
+ * @param type 技能类型标签
+ * @param gradient 渐变色定义（格式如"#3B82F6, #F59E0B"）
+ * @param enabled 初始启用状态
+ *
+ * 卡片采用两列网格自动排列，包含：
+ * - 头部：渐变色图标、技能名称、版本徽章
+ * - 中部：描述文本（自动换行）
+ * - 底部：类型标签、配置按钮、启用/禁用开关
+ */
 void SkillImportPage::createSkillCard(const QString& name, const QString& version,
                                       const QString& description, const QString& type,
                                       const QString& gradient, bool enabled)
@@ -172,10 +229,11 @@ void SkillImportPage::createSkillCard(const QString& name, const QString& versio
     cardLayout->setContentsMargins(20, 20, 20, 20);
     cardLayout->setSpacing(12);
 
-    // Header
+    // 头部：图标 + 名称 + 版本
     QHBoxLayout* header = new QHBoxLayout();
     header->setSpacing(12);
 
+    // 渐变色方形图标
     QWidget* iconWidget = new QWidget(card);
     iconWidget->setFixedSize(32, 32);
     iconWidget->setStyleSheet(QString("background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 %1, stop:1 %2); border-radius: 8px;").arg(gradient.split(",")[0], gradient.split(",")[1]));
@@ -193,13 +251,13 @@ void SkillImportPage::createSkillCard(const QString& name, const QString& versio
 
     cardLayout->addLayout(header);
 
-    // Description
+    // 描述文本
     QLabel* descLabel = new QLabel(description, card);
     descLabel->setStyleSheet("font-size: 13px; line-height: 1.5;");
     descLabel->setWordWrap(true);
     cardLayout->addWidget(descLabel);
 
-    // Footer
+    // 底部：类型标签 + 配置按钮 + 开关
     QHBoxLayout* footer = new QHBoxLayout();
     footer->setSpacing(8);
 
@@ -218,6 +276,7 @@ void SkillImportPage::createSkillCard(const QString& name, const QString& versio
     });
     footer->addWidget(configBtn);
 
+    // 启用/禁用开关按钮
     QPushButton* toggleBtn = new QPushButton(card);
     toggleBtn->setObjectName(enabled ? "toggleOn" : "toggleOff");
     toggleBtn->setFixedSize(44, 24);
@@ -241,6 +300,12 @@ void SkillImportPage::createSkillCard(const QString& name, const QString& versio
     m_skillGrid->addWidget(card, row, col);
 }
 
+/**
+ * @brief 应用当前主题样式
+ *
+ * 从ThemeManager获取颜色令牌，为内容区、上传区、输入框、各类按钮、
+ * 技能卡片、徽章及分隔线构建并设置QSS样式表。
+ */
 void SkillImportPage::applyTheme()
 {
     ThemeManager* tm = ThemeManager::instance();
@@ -278,6 +343,12 @@ void SkillImportPage::applyTheme()
     ).arg(bg, bg2, bg3, bdr, bg, pri, txtPri, txtSec, txtTer));
 }
 
+/**
+ * @brief 上传按钮点击槽函数
+ *
+ * 打开文件选择对话框，过滤支持格式（.zip/.json/.yaml/.yml）。
+ * 若用户选择了文件，将路径写入路径输入框并发射skillImported信号。
+ */
 void SkillImportPage::onUploadClicked()
 {
     QString path = QFileDialog::getOpenFileName(this, "选择技能文件",
@@ -289,6 +360,11 @@ void SkillImportPage::onUploadClicked()
     }
 }
 
+/**
+ * @brief 导入按钮点击槽函数
+ *
+ * 读取路径输入框中的文本并去除首尾空白，若非空则发射skillImported信号。
+ */
 void SkillImportPage::onImportClicked()
 {
     QString path = m_pathEdit->text().trimmed();
@@ -297,6 +373,11 @@ void SkillImportPage::onImportClicked()
     }
 }
 
+/**
+ * @brief 主题变化响应槽函数
+ *
+ * 重新应用主题样式表。
+ */
 void SkillImportPage::onThemeChanged()
 {
     applyTheme();
