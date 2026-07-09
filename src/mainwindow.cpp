@@ -71,9 +71,15 @@ void MainWindow::setupCoreComponents()
 
     m_fileAgent = new FileAgent(this);
     m_computerAgent = new ComputerAgent(this);
+    m_codeAgent = new CodeAgent(this);
+    m_searchAgent = new SearchAgent(this);
+    m_textAgent = new TextAgent(this);
 
     m_orchestrator->addAgent(m_fileAgent);
     m_orchestrator->addAgent(m_computerAgent);
+    m_orchestrator->addAgent(m_codeAgent);
+    m_orchestrator->addAgent(m_searchAgent);
+    m_orchestrator->addAgent(m_textAgent);
 
     // 连接Orchestrator各阶段信号到主窗口槽函数
     connect(m_orchestrator, &Orchestrator::planGenerated,

@@ -121,6 +121,83 @@ private:
      * @return 检查结果
      */
     QVariantMap fileExists(const QVariantMap& args);
+
+    /**
+     * @brief 复制文件或目录
+     * @param args 包含source、target、overwrite参数
+     * @return 复制结果
+     */
+    QVariantMap copyFile(const QVariantMap& args);
+
+    /**
+     * @brief 移动文件或目录
+     * @param args 包含source、target参数
+     * @return 移动结果
+     */
+    QVariantMap moveFile(const QVariantMap& args);
+
+    /**
+     * @brief 重命名文件或目录
+     * @param args 包含path、newName参数
+     * @return 重命名结果
+     */
+    QVariantMap renameFile(const QVariantMap& args);
+
+    /**
+     * @brief 获取文件详细信息
+     * @param args 包含path参数
+     * @return 文件信息（大小、创建时间、修改时间、权限等）
+     */
+    QVariantMap fileInfo(const QVariantMap& args);
+
+    /**
+     * @brief 搜索文件（按文件名模式匹配）
+     * @param args 包含dir、pattern、recursive参数
+     * @return 匹配的文件列表
+     */
+    QVariantMap searchFiles(const QVariantMap& args);
+
+    /**
+     * @brief 读取文件指定行范围
+     * @param args 包含path、startLine、endLine参数
+     * @return 指定行的内容
+     */
+    QVariantMap readFileLines(const QVariantMap& args);
+
+    /**
+     * @brief 在文件指定行写入内容
+     * @param args 包含path、startLine、content参数
+     * @return 写入结果
+     */
+    QVariantMap writeFileLines(const QVariantMap& args);
+
+    /**
+     * @brief 获取目录大小
+     * @param args 包含dir参数
+     * @return 目录总大小（字节）
+     */
+    QVariantMap directorySize(const QVariantMap& args);
+
+    /**
+     * @brief 删除目录（递归删除）
+     * @param args 包含path参数
+     * @return 删除结果
+     */
+    QVariantMap deleteDirectory(const QVariantMap& args);
+
+    /**
+     * @brief 比较两个文件内容
+     * @param args 包含file1、file2参数
+     * @return 比较结果（是否相同及差异）
+     */
+    QVariantMap compareFiles(const QVariantMap& args);
+
+    /**
+     * @brief 获取文件扩展名
+     * @param args 包含path参数
+     * @return 文件扩展名及基础名
+     */
+    QVariantMap fileExtension(const QVariantMap& args);
 };
 
 #endif

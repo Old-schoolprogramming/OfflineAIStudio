@@ -63,6 +63,9 @@ struct TaskStep {
     QString     error;        ///< 执行失败时的错误信息，由 Agent 或调度器填充
     QDateTime   startTime;    ///< 步骤开始执行的时间戳，调度器在执行前填充
     QDateTime   endTime;      ///< 步骤执行完成的时间戳，调度器在完成后填充
+    int         retryCount;   ///< 已重试次数，用于失败重试机制
+    int         maxRetries;   ///< 最大重试次数，默认为0（不重试）
+    bool        useContext;   ///< 是否使用前一步的结果作为上下文，默认为false
 
     /**
      * @brief 默认构造函数
@@ -71,7 +74,7 @@ struct TaskStep {
      * 其他字段由 Planner 在解析 JSON 时填充。
      */
     TaskStep()
-        : stepId(0), status(StepStatus::Pending) {}
+        : stepId(0), status(StepStatus::Pending), retryCount(0), maxRetries(0), useContext(false) {}
 
     /**
      * @brief 将 StepStatus 枚举转换为可读的字符串

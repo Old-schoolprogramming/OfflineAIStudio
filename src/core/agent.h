@@ -26,6 +26,9 @@ public:
     enum AgentType {
         FileAgentType,       ///< 文件操作Agent
         ComputerAgentType,   ///< 系统命令Agent
+        CodeAgentType,       ///< 代码处理Agent
+        SearchAgentType,     ///< 搜索Agent
+        TextAgentType,       ///< 文本处理Agent
         OrchestratorType     ///< 总控调度Agent
     };
 

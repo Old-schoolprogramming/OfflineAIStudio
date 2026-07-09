@@ -166,8 +166,23 @@ TaskStep Planner::parseStep(const QJsonObject& stepObj)
         step.description = stepObj["name"].toString();
     }
 
+    // 解析上下文传递标志（可选字段）
+    if (stepObj.contains("use_context")) {
+        step.useContext = stepObj["use_context"].toBool();
+    } else if (stepObj.contains("useContext")) {
+        step.useContext = stepObj["useContext"].toBool();
+    }
+
+    // 解析最大重试次数（可选字段）
+    if (stepObj.contains("max_retries")) {
+        step.maxRetries = stepObj["max_retries"].toInt();
+    } else if (stepObj.contains("maxRetries")) {
+        step.maxRetries = stepObj["maxRetries"].toInt();
+    }
+
     // 初始状态为 Pending，等待调度器执行
     step.status = StepStatus::Pending;
+    step.retryCount = 0;
 
     return step;
 }
