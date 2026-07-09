@@ -1,0 +1,81 @@
+# Compiled files
+build/
+build-*/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.lib
+*.dylib
+*.pdb
+*.ilk
+*.manifest
+
+# Qt generated files
+*.moc
+*.moc.cpp
+*.ui.h
+qrc_*.cpp
+moc_*.cpp
+uic_*.cpp
+*.qrc.depends
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.ninja
+build.ninja
+rules.ninja
+
+# Qt Creator files
+CMakeLists.txt.user
+*.pro.user
+*.qbs.user
+*.qmlproject.user
+*.qmlproject.user.*
+*.files
+*.config
+*.creator
+*.creator.user
+*.creator.user.*
+
+# Visual Studio files
+*.sln
+*.vcxproj
+*.vcxproj.user
+*.vcxproj.filters
+*.suo
+*.user
+*.vs/
+
+# MacOS
+.DS_Store
+*.app/
+
+# Linux
+*.desktop
+*.sh
+
+# Log files
+*.log
+
+# Test files
+tests/
+*.test
+
+# Coverage
+*.gcda
+*.gcno
+coverage/
+
+# Third party libraries
+thirdparty/
+
+# Local configuration
+config.json
+settings.ini
+*.ini
