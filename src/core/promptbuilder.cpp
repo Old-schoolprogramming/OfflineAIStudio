@@ -43,7 +43,9 @@ PromptBuilder::PromptBuilder()
         "param1": "value1",
         "param2": "value2"
       },
-      "description": "步骤描述"
+      "description": "步骤描述",
+      "use_context": true,
+      "max_retries": 2
     }
   ]
 })";
@@ -180,6 +182,24 @@ Rules for creating the plan:
 5. Include a brief description for each step
 6. Use Chinese for descriptions
 7. Return ONLY the JSON object, no extra explanation text
+8. For steps that need the result of the previous step, set "use_context": true. The previous step's output will be passed as the "context" argument
+9. For critical steps that may fail, set "max_retries": 2 or higher to enable automatic retries
+10. If a task can be solved in multiple ways, prefer the simplest and most reliable method first
+11. Consider using different agents for backup - if one agent fails, another can try the same task
+12. For complex tasks, consider intermediate validation steps to catch errors early
+
+Agent Collaboration Strategy:
+- FileAgent: For all file system operations (reading, writing, searching, copying, etc.)
+- ComputerAgent: For system operations, network, and environment information
+- CodeAgent: For code analysis, statistics, and code-related operations
+- SearchAgent: For content search and replacement in files
+- TextAgent: For text processing, encoding/decoding, and hash calculations
+- If one agent's tool fails, the system will automatically try another agent that has a similar tool
+- Steps are executed sequentially, and each step's output can be passed to the next step via context
+
+Additional step fields (optional):
+- use_context (boolean): If true, the previous step's output will be injected as the "context" argument
+- max_retries (integer): Maximum number of retry attempts if the step fails (default: 2)
 
 If the user's request is a simple question that doesn't require any tools, respond with a normal answer instead of a plan.
 )";

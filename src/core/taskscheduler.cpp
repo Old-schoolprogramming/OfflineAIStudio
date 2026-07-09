@@ -32,7 +32,8 @@ TaskScheduler::TaskScheduler(QObject *parent)
     : QObject(parent),
       m_currentStepIndex(0),
       m_isRunning(false),
-      m_shouldStop(false)
+      m_shouldStop(false),
+      m_maxRetries(2)
 {
 }
 
@@ -97,6 +98,24 @@ bool TaskScheduler::isRunning() const
 }
 
 /**
+ * @brief 设置全局默认最大重试次数
+ * @param count 最大重试次数
+ */
+void TaskScheduler::setMaxRetries(int count)
+{
+    m_maxRetries = qMax(0, count);
+}
+
+/**
+ * @brief 获取全局默认最大重试次数
+ * @return 最大重试次数
+ */
+int TaskScheduler::maxRetries() const
+{
+    return m_maxRetries;
+}
+
+/**
  * @brief 启动执行当前设置的计划
  *
  * @implementation
@@ -147,17 +166,23 @@ void TaskScheduler::stopExecution()
  * 这是调度引擎的心脏，采用递归方式实现顺序执行。
  * 每次调用处理一个步骤，处理完毕后递归调用自身处理下一个。
  *
+ * 增强的协作能力：
+ * 1. 失败重试：步骤失败后自动重试（受maxRetries限制）
+ * 2. 多Agent备份：首选Agent失败后，尝试其他拥有相同工具的Agent
+ * 3. 上下文传递：前一步的结果可作为后一步的context参数
+ *
  * 步骤处理流程：
  * 1. 终止检查：如果 m_shouldStop 或索引越界，标记完成并返回
- * 2. 状态更新：将当前步骤设为 Running，填充 startTime
- * 3. 通知 UI：发射 stepStarted + stepOutput（日志头）
- * 4. Agent 查找：通过 findAgentForTool() 查找拥有该工具的 Agent
- * 5. 找不到 Agent：标记为 Failed，填充 error，发射 stepFailed，递归下一步
- * 6. 找到 Agent：调用 executeTool() 同步执行
- * 7. 结果处理：
+ * 2. 状态更新：将当前步骤设为 Running，记录开始时间
+ * 3. 上下文注入：如果useContext为true，将前一步结果注入参数
+ * 4. 通知 UI：发射 stepStarted + stepOutput（日志头）
+ * 5. Agent 查找：通过 findAgentForTool() 查找拥有该工具的 Agent
+ * 6. 找不到 Agent：标记为 Failed，填充 error，发射 stepFailed，递归下一步
+ * 7. 找到 Agent：调用 executeTool() 同步执行
+ * 8. 结果处理：
  *    - success=true → Completed，填充 output 和 endTime，发射 stepCompleted
- *    - success=false → Failed，填充 error 和 endTime，发射 stepFailed
- * 8. 递归：递增索引，调用 executeNextStep()
+ *    - success=false → 检查是否可重试/切换Agent，不行则Failed
+ * 9. 递归：递增索引，调用 executeNextStep()
  *
  * 递归终止条件：
  * - m_shouldStop 为 true（用户停止）
@@ -176,20 +201,43 @@ void TaskScheduler::executeNextStep()
     // 取出当前步骤的引用（注意：这里使用引用是为了就地修改状态）
     TaskStep& step = m_currentPlan.steps[m_currentStepIndex];
 
+    // 如果步骤已经完成（可能是重试后的状态），跳过
+    if (step.status == StepStatus::Completed) {
+        m_currentStepIndex++;
+        executeNextStep();
+        return;
+    }
+
     // 更新步骤状态为 Running，记录开始时间
     step.status = StepStatus::Running;
     step.startTime = QDateTime::currentDateTime();
+
+    // 获取前一步的输出（用于上下文传递）
+    QString previousOutput;
+    if (m_currentStepIndex > 0) {
+        previousOutput = m_currentPlan.steps[m_currentStepIndex - 1].output;
+    }
+
+    // 如果启用了上下文传递，将前一步结果注入当前步骤参数
+    if (step.useContext && !previousOutput.isEmpty()) {
+        injectContext(step, previousOutput);
+    }
+
+    // 如果是重试，输出重试提示
+    if (step.retryCount > 0) {
+        emit stepOutput(step.stepId, QString("=== 第 %1 次重试 ===").arg(step.retryCount));
+    }
 
     // 通知 UI：步骤开始执行
     emit stepStarted(step.stepId);
     // 通知 UI：输出步骤头信息（包含 Agent、Tool、参数等）
     emit stepOutput(step.stepId, buildStepLogHeader(step));
 
-    // 按工具名称查找拥有该工具的 Agent
-    Agent* agent = findAgentForTool(step.tool);
+    // 查找所有能执行该工具的Agent（用于多Agent协作备份）
+    QList<Agent*> candidateAgents = findAllAgentsForTool(step.tool);
 
     // 场景A：找不到能执行该工具的 Agent
-    if (!agent) {
+    if (candidateAgents.isEmpty()) {
         step.status = StepStatus::Failed;
         step.error = "找不到执行工具的Agent: " + step.tool;
         step.endTime = QDateTime::currentDateTime();
@@ -198,6 +246,15 @@ void TaskScheduler::executeNextStep()
         m_currentStepIndex++;
         executeNextStep();
         return;
+    }
+
+    // 确定实际使用的Agent索引（重试时尝试下一个Agent）
+    int agentIndex = qMin(step.retryCount, candidateAgents.size() - 1);
+    Agent* agent = candidateAgents[agentIndex];
+
+    // 如果切换了Agent，输出提示
+    if (agentIndex > 0) {
+        emit stepOutput(step.stepId, QString("尝试使用备用Agent: %1").arg(agent->name()));
     }
 
     // 场景B：找到 Agent，同步执行工具
@@ -212,7 +269,28 @@ void TaskScheduler::executeNextStep()
         emit stepOutput(step.stepId, "输出:\n" + step.output);
         emit stepCompleted(step.stepId, result);
     } else {
-        // 执行失败
+        // 执行失败，检查是否可以重试或切换Agent
+        int maxRet = step.maxRetries > 0 ? step.maxRetries : m_maxRetries;
+        bool canRetry = step.retryCount < maxRet;
+        bool hasAltAgent = agentIndex + 1 < candidateAgents.size();
+
+        if (canRetry || hasAltAgent) {
+            // 可以重试或切换Agent
+            step.retryCount++;
+            QString errorMsg = result.value("error", "Unknown error").toString();
+            emit stepOutput(step.stepId, QString("失败: %1（即将重试...）").arg(errorMsg));
+
+            // 重置状态为Pending，重新执行当前步骤
+            step.status = StepStatus::Pending;
+            step.error = "";
+
+            // 延迟一点再重试（让UI有机会更新）
+            // 通过递归调用立即重试（简化实现）
+            executeNextStep();
+            return;
+        }
+
+        // 无法重试，标记为最终失败
         step.status = StepStatus::Failed;
         step.error = result.value("error", "Unknown error").toString();
         step.endTime = QDateTime::currentDateTime();
@@ -305,4 +383,43 @@ QString TaskScheduler::buildStepLogHeader(const TaskStep& step)
     }
 
     return header;
+}
+
+/**
+ * @brief 查找所有拥有指定工具的Agent
+ * @param toolName 工具名称
+ * @return Agent指针列表
+ *
+ * @details
+ * 遍历所有已注册的Agent，收集所有拥有该工具的Agent。
+ * 用于失败时切换到备用Agent，提升系统的容错能力。
+ */
+QList<Agent*> TaskScheduler::findAllAgentsForTool(const QString& toolName)
+{
+    QList<Agent*> result;
+    for (Agent* agent : m_agents) {
+        QList<Tool*> tools = agent->tools();
+        for (Tool* tool : tools) {
+            if (tool->name().compare(toolName, Qt::CaseInsensitive) == 0) {
+                result.append(agent);
+                break;
+            }
+        }
+    }
+    return result;
+}
+
+/**
+ * @brief 将前一步的结果注入到当前步骤的参数中
+ * @param step 当前步骤（会被修改）
+ * @param previousOutput 前一步的输出结果
+ *
+ * @details
+ * 实现步骤间的上下文传递机制。将前一步的输出结果
+ * 作为"context"参数注入到当前步骤的args中。
+ * 这样后续步骤可以利用前面步骤的结果进行处理。
+ */
+void TaskScheduler::injectContext(TaskStep& step, const QString& previousOutput)
+{
+    step.args["context"] = previousOutput;
 }

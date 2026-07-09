@@ -34,6 +34,12 @@ set(PROJECT_SOURCES
     src/agents/fileagent.cpp
     src/agents/computeragent.h
     src/agents/computeragent.cpp
+    src/agents/codeagent.h
+    src/agents/codeagent.cpp
+    src/agents/searchagent.h
+    src/agents/searchagent.cpp
+    src/agents/textagent.h
+    src/agents/textagent.cpp
     src/ui/thememanager.h
     src/ui/thememanager.cpp
     src/ui/iconhelper.h

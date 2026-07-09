@@ -274,8 +274,8 @@ private slots:
      *
      * @details
      * 1. 透传 planCompleted 信号到 UI
-     * 2. 调用 generateSummary() 生成执行统计总结
-     * 3. 重置 m_isProcessing 标志
+     * 2. 检查是否有失败步骤，如果有且启用了反思重规划，则触发重规划
+     * 3. 如果不需要重规划，生成执行总结
      */
     void onSchedulerPlanCompleted(const TaskPlan& plan);
 
@@ -285,11 +285,24 @@ private:
      * @param query 用户的原始输入
      *
      * @implementation
-     * 1. 调用 PromptBuilder::buildPlanningSystemPrompt() 构造规划专用的系统提示词
-     * 2. 调用 PromptBuilder::buildPlanningUserPrompt() 构造用户提示词
-     * 3. 通过 LlmClient::sendPrompt() 发送请求
+     * 1. 调用 PromptBuilder::buildPlanningSystemPrompt(m_agents) 构造规划专用系统提示词
+     *    该提示词包含所有 Agent/工具的 JSON Schema 描述和格式要求
+     * 2. 调用 PromptBuilder::buildPlanningUserPrompt(query) 构造用户提示词
+     * 3. 通过 LlmClient::sendPrompt() 发送 HTTP 请求
      */
     void sendPlanningRequest(const QString& query);
+
+    /**
+     * @brief 向LLM发送反思重规划请求
+     * @param failedStepId 失败的步骤ID
+     * @param errorMessage 错误信息
+     *
+     * @details
+     * 当计划执行遇到失败步骤时，调用此方法向LLM请求重新规划。
+     * 将已完成的步骤和失败信息作为上下文，让LLM生成新的执行方案。
+     * 这是"反思-重规划"闭环的核心。
+     */
+    void sendReplanningRequest(int failedStepId, const QString& errorMessage);
 
     /**
      * @brief 生成执行总结
@@ -312,6 +325,9 @@ private:
     QString m_currentQuery;       ///< 当前正在处理的用户输入（用于填充 plan.goal）
     bool m_isProcessing;          ///< 是否正在处理请求（防止并发）
     bool m_isPlanningPhase;       ///< 当前是否处于规划阶段（影响 onLlmResponse 的处理逻辑）
+    bool m_isReplanningPhase;     ///< 当前是否处于反思重规划阶段
+    int m_replanCount;            ///< 已重规划次数（限制重规划次数防止死循环）
+    static const int MAX_REPLANS = 2; ///< 最大重规划次数
 };
 
 #endif // ORCHESTRATOR_H

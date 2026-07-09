@@ -24,6 +24,9 @@ SOURCES += \
     src/core/taskscheduler.cpp \
     src/agents/fileagent.cpp \
     src/agents/computeragent.cpp \
+    src/agents/codeagent.cpp \
+    src/agents/searchagent.cpp \
+    src/agents/textagent.cpp \
     src/ui/chatwidget.cpp \
     src/ui/tasklistpanel.cpp \
     src/ui/outputpanel.cpp \
@@ -44,6 +47,9 @@ HEADERS += \
     src/core/taskscheduler.h \
     src/agents/fileagent.h \
     src/agents/computeragent.h \
+    src/agents/codeagent.h \
+    src/agents/searchagent.h \
+    src/agents/textagent.h \
     src/ui/chatwidget.h \
     src/ui/tasklistpanel.h \
     src/ui/outputpanel.h \

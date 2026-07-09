@@ -130,6 +130,22 @@ public:
      */
     TaskPlan currentPlan() const;
 
+    /**
+     * @brief 设置最大重试次数（全局默认值）
+     * @param count 最大重试次数
+     *
+     * @details
+     * 为所有步骤设置默认的最大重试次数。
+     * 单个步骤可以通过maxRetries字段覆盖此默认值。
+     */
+    void setMaxRetries(int count);
+
+    /**
+     * @brief 获取当前最大重试次数
+     * @return 全局默认最大重试次数
+     */
+    int maxRetries() const;
+
 signals:
     /**
      * @brief 收到新的执行计划
@@ -237,6 +253,17 @@ private:
     Agent* findAgentForTool(const QString& toolName);
 
     /**
+     * @brief 查找所有拥有指定工具的 Agent（用于失败时尝试替代Agent）
+     * @param toolName 工具名称
+     * @return Agent 指针列表
+     *
+     * @details
+     * 当首选Agent执行失败时，可以尝试使用其他拥有相同工具的Agent。
+     * 这是协作能力的重要部分：多Agent互为备份。
+     */
+    QList<Agent*> findAllAgentsForTool(const QString& toolName);
+
+    /**
      * @brief 构建步骤执行的日志头信息
      * @param step 当前步骤
      * @return 格式化的日志头字符串，包含步骤编号、描述、Agent、工具、参数
@@ -245,11 +272,24 @@ private:
      */
     QString buildStepLogHeader(const TaskStep& step);
 
+    /**
+     * @brief 将前一步的结果注入到当前步骤的参数中（上下文传递）
+     * @param step 当前步骤（会被修改）
+     * @param previousOutput 前一步的输出结果
+     *
+     * @details
+     * 如果步骤的useContext为true，将前一步的输出结果
+     * 作为context参数注入到当前步骤的args中。
+     * 这实现了步骤间的上下文传递。
+     */
+    void injectContext(TaskStep& step, const QString& previousOutput);
+
     QList<Agent*> m_agents;      ///< 已注册的 Agent 列表（TaskScheduler 不拥有所有权）
     TaskPlan m_currentPlan;      ///< 当前正在执行的计划
     int m_currentStepIndex;      ///< 当前执行的步骤索引（0-based）
     bool m_isRunning;            ///< 是否正在执行中
     bool m_shouldStop;           ///< 用户是否请求停止（中断标志）
+    int m_maxRetries;            ///< 全局默认最大重试次数
 };
 
 #endif // TASKSCHEDULER_H

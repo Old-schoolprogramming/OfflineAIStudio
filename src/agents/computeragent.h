@@ -104,6 +104,90 @@ private:
      * @return 终止结果
      */
     QVariantMap killProcess(const QVariantMap& args);
+
+    /**
+     * @brief 获取环境变量
+     * @param args 包含name参数
+     * @return 环境变量值
+     */
+    QVariantMap getEnv(const QVariantMap& args);
+
+    /**
+     * @brief 设置环境变量
+     * @param args 包含name、value参数
+     * @return 设置结果
+     */
+    QVariantMap setEnv(const QVariantMap& args);
+
+    /**
+     * @brief 列出所有环境变量
+     * @param args 无参数
+     * @return 所有环境变量列表
+     */
+    QVariantMap listEnv(const QVariantMap& args);
+
+    /**
+     * @brief 获取磁盘信息
+     * @param args 包含path参数（可选，默认/）
+     * @return 磁盘使用情况信息
+     */
+    QVariantMap diskInfo(const QVariantMap& args);
+
+    /**
+     * @brief 获取内存信息
+     * @param args 无参数
+     * @return 内存使用情况信息
+     */
+    QVariantMap memoryInfo(const QVariantMap& args);
+
+    /**
+     * @brief 获取网络信息
+     * @param args 无参数
+     * @return 网络接口和连接信息
+     */
+    QVariantMap networkInfo(const QVariantMap& args);
+
+    /**
+     * @brief 检查端口是否被占用
+     * @param args 包含port参数
+     * @return 端口占用情况
+     */
+    QVariantMap checkPort(const QVariantMap& args);
+
+    /**
+     * @brief Ping指定主机
+     * @param args 包含host、count参数
+     * @return Ping结果
+     */
+    QVariantMap ping(const QVariantMap& args);
+
+    /**
+     * @brief 获取当前工作目录
+     * @param args 无参数
+     * @return 当前工作目录路径
+     */
+    QVariantMap currentDirectory(const QVariantMap& args);
+
+    /**
+     * @brief 改变当前工作目录
+     * @param args 包含path参数
+     * @return 切换结果
+     */
+    QVariantMap changeDirectory(const QVariantMap& args);
+
+    /**
+     * @brief 获取CPU信息
+     * @param args 无参数
+     * @return CPU详细信息
+     */
+    QVariantMap cpuInfo(const QVariantMap& args);
+
+    /**
+     * @brief 计算文件的MD5哈希
+     * @param args 包含path参数
+     * @return MD5哈希值
+     */
+    QVariantMap fileHash(const QVariantMap& args);
 };
 
 #endif

@@ -26,6 +26,9 @@
 #include "core/task.h"
 #include "agents/fileagent.h"
 #include "agents/computeragent.h"
+#include "agents/codeagent.h"
+#include "agents/searchagent.h"
+#include "agents/textagent.h"
 #include "ui/chatpage.h"
 #include "ui/modelconfigpage.h"
 #include "ui/skillimportpage.h"
@@ -99,6 +102,9 @@ private:
     Orchestrator* m_orchestrator; ///< 总控协调器（规划+调度）
     FileAgent* m_fileAgent;       ///< 文件操作Agent
     ComputerAgent* m_computerAgent; ///< 系统命令Agent
+    CodeAgent* m_codeAgent;       ///< 代码处理Agent
+    SearchAgent* m_searchAgent; ///< 文件搜索Agent
+    TextAgent* m_textAgent;     ///< 文本处理Agent
 
     int m_currentPage;            ///< 当前活动页面索引（0=对话,1=模型,2=技能）
 };

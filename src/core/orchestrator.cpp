@@ -41,7 +41,9 @@ Orchestrator::Orchestrator(QObject *parent)
       m_llmClient(nullptr),
       m_scheduler(new TaskScheduler(this)),
       m_isProcessing(false),
-      m_isPlanningPhase(false)
+      m_isPlanningPhase(false),
+      m_isReplanningPhase(false),
+      m_replanCount(0)
 {
     // 连接 TaskScheduler 信号 → Orchestrator 透传槽
     // 这些连接实现了"信号代理"模式：TaskScheduler 的信号通过 Orchestrator
@@ -210,6 +212,8 @@ void Orchestrator::processQuery(const QString& query)
 
     m_isProcessing = true;
     m_isPlanningPhase = true;
+    m_isReplanningPhase = false;
+    m_replanCount = 0;
     m_currentQuery = query;
 
     sendPlanningRequest(query);
@@ -229,6 +233,7 @@ void Orchestrator::stopExecution()
     }
     m_isProcessing = false;
     m_isPlanningPhase = false;
+    m_isReplanningPhase = false;
 }
 
 /**
@@ -253,19 +258,24 @@ void Orchestrator::sendPlanningRequest(const QString& query)
  * @param response LLM 返回的文本
  *
  * @implementation
- * 根据 m_isPlanningPhase 标志选择处理分支：
+ * 根据当前阶段选择处理分支：
  *
  * 规划阶段（m_isPlanningPhase == true）：
  *   1. 调用 Planner::parsePlan(response) 解析 JSON
  *   2. 如果 steps 为空：
  *      - LLM 返回了纯文本回答（不需要工具执行）
  *      - 发射 messageReceived（降级为普通对话模式）
- *      - 重置 m_isProcessing 和 m_isPlanningPhase
+ *      - 重置处理状态
  *   3. 如果 steps 非空：
  *      - 将 plan.goal 设置为用户原始输入（m_currentQuery）
  *      - 发射 planGenerated，通知 UI 初始化任务列表
  *      - 将计划交给 TaskScheduler 并开始执行
- *      - 标记 m_isPlanningPhase = false（后续 LLM 响应当作普通消息）
+ *      - 标记规划阶段结束
+ *
+ * 重规划阶段（m_isReplanningPhase == true）：
+ *   1. 调用 Planner 解析新的计划
+ *   2. 将新计划的步骤追加到当前计划中
+ *   3. 继续执行
  *
  * 非规划阶段：
  *   - 直接发射 messageReceived（用于总结消息等）
@@ -293,6 +303,49 @@ void Orchestrator::onLlmResponse(const QString& response)
         m_scheduler->setPlan(plan);
         m_isPlanningPhase = false;
         m_scheduler->startExecution();
+    } else if (m_isReplanningPhase) {
+        // 反思重规划阶段：解析新的计划并追加执行
+        TaskPlan newPlan = m_planner.parsePlan(response);
+
+        if (newPlan.steps.isEmpty()) {
+            // LLM 返回了纯文本解释，不再重规划
+            emit messageReceived("重规划失败: " + response);
+            m_isProcessing = false;
+            m_isReplanningPhase = false;
+            return;
+        }
+
+        // 获取当前计划并追加新步骤
+        TaskPlan currentPlan = m_scheduler->currentPlan();
+
+        // 重新编号新步骤
+        int maxStepId = 0;
+        for (const auto& step : currentPlan.steps) {
+            maxStepId = qMax(maxStepId, step.stepId);
+        }
+        for (auto& step : newPlan.steps) {
+            step.stepId = ++maxStepId;
+            currentPlan.steps.append(step);
+        }
+
+        emit messageReceived("🔄 反思重规划完成，生成了 " + QString::number(newPlan.steps.size()) + " 个新步骤");
+
+        // 将更新后的计划交给调度器继续执行
+        m_scheduler->setPlan(currentPlan);
+        m_isReplanningPhase = false;
+
+        // 找到第一个未完成的步骤索引，从那里继续
+        int startIndex = 0;
+        for (int i = 0; i < currentPlan.steps.size(); i++) {
+            if (currentPlan.steps[i].status == StepStatus::Pending) {
+                startIndex = i;
+                break;
+            }
+        }
+
+        // 注意：这里简化实现，直接启动全新执行
+        // 实际项目中可能需要更精细的控制
+        m_scheduler->startExecution();
     } else {
         // 非规划阶段：直接透传 LLM 消息（如总结消息）
         emit messageReceived(response);
@@ -311,6 +364,7 @@ void Orchestrator::onLlmError(const QString& error)
     emit errorOccurred("LLM错误: " + error);
     m_isProcessing = false;
     m_isPlanningPhase = false;
+    m_isReplanningPhase = false;
 }
 
 // ========================================================================
@@ -364,13 +418,47 @@ void Orchestrator::onSchedulerStepFailed(int stepId, const QString& error)
  *
  * @implementation
  * 1. 透传 planCompleted 信号到 UI
- * 2. 重置 m_isProcessing 标志，允许新的用户请求
- * 3. 调用 generateSummary() 生成执行统计，通过 messageReceived 展示
+ * 2. 检查计划中是否有失败的步骤
+ * 3. 如果有失败步骤且未达到最大重规划次数，则触发反思重规划
+ * 4. 如果不需要重规划，生成执行总结并重置状态
+ *
+ * 反思重规划是协作能力的高级形式：系统能够反思失败原因，
+ * 并请求LLM生成替代方案，形成"执行-失败-反思-重规划-再执行"的闭环。
  */
 void Orchestrator::onSchedulerPlanCompleted(const TaskPlan& plan)
 {
     emit planCompleted(plan);
+
+    // 检查是否有失败的步骤
+    int failedCount = 0;
+    int failedStepId = -1;
+    QString failedError;
+
+    for (const auto& step : plan.steps) {
+        if (step.status == StepStatus::Failed) {
+            failedCount++;
+            if (failedStepId == -1) {
+                failedStepId = step.stepId;
+                failedError = step.error;
+            }
+        }
+    }
+
+    // 如果有失败步骤且未达到最大重规划次数，触发反思重规划
+    if (failedCount > 0 && m_replanCount < MAX_REPLANS) {
+        m_replanCount++;
+        m_isReplanningPhase = true;
+        m_isProcessing = true;
+
+        emit messageReceived(QString("🤔 第 %1 次反思重规划：分析失败原因并调整方案...").arg(m_replanCount));
+
+        sendReplanningRequest(failedStepId, failedError);
+        return;
+    }
+
+    // 不需要重规划，生成总结
     m_isProcessing = false;
+    m_isReplanningPhase = false;
 
     generateSummary(plan);
 }
@@ -398,4 +486,65 @@ void Orchestrator::generateSummary(const TaskPlan& plan)
         .arg(plan.totalSteps()).arg(successCount).arg(failCount);
 
     emit messageReceived(summary);
+}
+
+/**
+ * @brief 向LLM发送反思重规划请求
+ * @param failedStepId 失败的步骤ID
+ * @param errorMessage 错误信息
+ *
+ * @implementation
+ * 构造重规划的系统提示词和用户提示词，包含：
+ * 1. 原始任务目标
+ * 2. 已完成的步骤及其结果
+ * 3. 失败的步骤和错误信息
+ * 4. 所有可用的Agent和工具
+ *
+ * 引导LLM基于失败信息生成新的执行方案，
+ * 尝试用不同的方法或不同的Agent来完成任务。
+ *
+ * 这是"反思-重规划"闭环的核心实现。
+ */
+void Orchestrator::sendReplanningRequest(int failedStepId, const QString& errorMessage)
+{
+    if (!m_llmClient) return;
+
+    TaskPlan currentPlan = m_scheduler->currentPlan();
+
+    // 构造系统提示词（包含所有Agent工具信息）
+    QString systemPrompt = m_promptBuilder.buildPlanningSystemPrompt(m_agents);
+
+    // 构造重规划的用户提示词
+    QString userPrompt;
+    userPrompt += "## 任务重规划请求\n\n";
+    userPrompt += "### 原始任务目标\n";
+    userPrompt += currentPlan.goal + "\n\n";
+    userPrompt += "### 已完成的步骤\n";
+    for (const auto& step : currentPlan.steps) {
+        if (step.status == StepStatus::Completed) {
+            userPrompt += QString("- 步骤 %1 (%2/%3): 成功\n")
+                .arg(step.stepId).arg(step.agent).arg(step.tool);
+            if (!step.output.isEmpty()) {
+                userPrompt += "  结果: " + step.output.left(200) + "\n";
+            }
+        }
+    }
+    userPrompt += "\n";
+    userPrompt += "### 失败的步骤\n";
+    for (const auto& step : currentPlan.steps) {
+        if (step.status == StepStatus::Failed) {
+            userPrompt += QString("- 步骤 %1 (%2/%3)\n")
+                .arg(step.stepId).arg(step.agent).arg(step.tool);
+            userPrompt += "  错误: " + step.error + "\n";
+        }
+    }
+    userPrompt += "\n";
+    userPrompt += "### 要求\n";
+    userPrompt += "1. 请分析失败原因，并设计一个新的执行方案来完成原始任务\n";
+    userPrompt += "2. 你可以尝试使用不同的Agent、不同的工具或不同的方法\n";
+    userPrompt += "3. 如果原始方法行不通，请思考替代方案\n";
+    userPrompt += "4. 只需要输出剩余未完成部分的计划\n";
+    userPrompt += "5. 请严格按照JSON格式输出，格式同上\n";
+
+    m_llmClient->sendPrompt(userPrompt, systemPrompt);
 }
