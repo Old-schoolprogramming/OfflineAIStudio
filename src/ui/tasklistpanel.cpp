@@ -1,353 +1,346 @@
 /**
  * @file tasklistpanel.cpp
- * @brief 任务列表面板实现
+ * @brief 任务列表面板实现 —— 左侧任务计划与进度展示
  *
  * @details
- * TaskListPanel 的实现基于标准的 Qt Widgets：
- * - QLabel: 展示标题和目标描述
- * - QProgressBar: 展示执行进度
- * - QListWidget: 展示步骤列表（使用 HTML 富文本渲染）
+ * TaskListPanel 负责将 Planner 解析的 TaskPlan 渲染为用户可见的 UI：
+ * - 顶部标题"任务列表"
+ * - 目标描述（plan.goal）
+ * - 整体进度条（completed/total）
+ * - 步骤列表（带状态图标、颜色编码、Agent→工具映射）
  *
- * 核心设计要点：
- * 1. 每个步骤使用 QListWidgetItem 的 setText() 方法设置 HTML 富文本
- *    这样可以实现状态图标、颜色编码等视觉效果
- * 2. 步骤编号存储在 item 的 Qt::UserRole 数据中，用于点击事件识别
- * 3. updateStepStatus() 通过 stepId 匹配更新，而非索引，确保健壮性
- * 4. 进度条百分比 = completedSteps / totalSteps * 100
+ * 数据流：
+ *   Planner → TaskPlan → setPlan() → 渲染条目
+ *   TaskScheduler → 信号 → MainWindow → updateStepStatus() → 局部刷新
  */
 
-#include "tasklistpanel.h"
-#include <QDateTime>
+#include "tasklistpanel.h"  // 引入自己的头文件
+
+#include <QVariant>        // 引入 QVariant，用于在 QListWidgetItem 中存储自定义数据
+#include <QStringBuilder>  // 引入 QStringBuilder，提升大量字符串拼接性能
 
 /**
- * @brief 构造函数
- * @param parent 父 QWidget
- *
- * @implementation
- * 调用 setupUI() 完成所有子控件的创建和布局。
+ * @brief 构造函数 - 初始化面板 UI 和成员变量
+ * @param parent 父 QWidget 指针，默认为 nullptr（独立窗口）
  */
 TaskListPanel::TaskListPanel(QWidget *parent)
-    : QWidget(parent)
+    : QWidget(parent)        // 【初始化】调用基类 QWidget 构造函数
+    , m_taskList(nullptr)    // 【初始化】列表指针置空
+    , m_titleLabel(nullptr)  // 【初始化】标题标签指针置空
+    , m_goalLabel(nullptr)   // 【初始化】目标标签指针置空
+    , m_progressBar(nullptr) // 【初始化】进度条指针置空
+    , m_mainLayout(nullptr)  // 【初始化】主布局指针置空
 {
-    setupUI();
+    setupUI();  // 创建并布局所有子控件
+    clearPlan(); // 初始化为"暂无任务"空状态
 }
 
 /**
  * @brief 析构函数
  *
- * @note 所有子控件由 Qt 父对象机制自动析构，无需手动 delete。
+ * Qt 父子对象机制自动释放所有子控件，无需手动 delete。
  */
 TaskListPanel::~TaskListPanel()
 {
-}
-
-/**
- * @brief 创建和布局所有 UI 子控件
- *
- * @implementation
- * 控件层次结构（垂直布局）：
- * m_mainLayout (QVBoxLayout)
- *   ├── m_titleLabel    — "任务列表" 标题（16px, 粗体, 白色）
- *   ├── m_goalLabel     — 计划目标描述（默认"暂无任务"）
- *   ├── m_progressBar   — 进度条（0-100，渐变紫色填充）
- *   └── m_taskList      — 步骤列表（自定义 QSS 样式）
- *
- * 样式设计：
- * - 整体深色主题，与主窗口协调
- * - 标题底部有 8px 内边距
- * - 目标标签使用 #1e293b 背景色 + 圆角边框
- * - 进度条使用 qlineargradient 实现 indigo → violet 渐变
- * - 列表项有悬停和选中效果
- */
-void TaskListPanel::setupUI()
-{
-    m_mainLayout = new QVBoxLayout(this);
-    m_mainLayout->setContentsMargins(12, 12, 12, 12);
-    m_mainLayout->setSpacing(10);
-
-    // 标题标签
-    m_titleLabel = new QLabel("任务列表", this);
-    m_titleLabel->setObjectName("taskListTitle");
-    m_titleLabel->setStyleSheet(
-        "color: #f1f5f9;"
-        "font-size: 16px;"
-        "font-weight: 600;"
-        "padding-bottom: 8px;"
-    );
-    m_mainLayout->addWidget(m_titleLabel);
-
-    // 目标描述标签（初始状态："暂无任务"）
-    m_goalLabel = new QLabel("暂无任务", this);
-    m_goalLabel->setObjectName("taskGoal");
-    m_goalLabel->setWordWrap(true);  // 允许自动换行
-    m_goalLabel->setStyleSheet(
-        "color: #94a3b8;"
-        "font-size: 13px;"
-        "padding: 8px 12px;"
-        "background-color: #1e293b;"
-        "border-radius: 6px;"
-    );
-    m_mainLayout->addWidget(m_goalLabel);
-
-    // 进度条
-    m_progressBar = new QProgressBar(this);
-    m_progressBar->setObjectName("taskProgressBar");
-    m_progressBar->setRange(0, 100);
-    m_progressBar->setValue(0);
-    m_progressBar->setFormat("进度: %v%");
-    m_progressBar->setTextVisible(true);
-    // 进度条样式：使用 qlineargradient 实现 indigo → violet 渐变填充
-    m_progressBar->setStyleSheet(
-        "QProgressBar {"
-        "   border: none;"
-        "   border-radius: 6px;"
-        "   background-color: #1e293b;"
-        "   text-align: center;"
-        "   color: #f1f5f9;"
-        "   font-size: 12px;"
-        "   height: 20px;"
-        "}"
-        "QProgressBar::chunk {"
-        "   border-radius: 6px;"
-        "   background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-        "       stop:0 #6366f1, stop:1 #8b5cf6);"
-        "}"
-    );
-    m_mainLayout->addWidget(m_progressBar);
-
-    // 步骤列表
-    m_taskList = new QListWidget(this);
-    m_taskList->setObjectName("taskList");
-    m_taskList->setStyleSheet(
-        "QListWidget {"
-        "   background-color: #0f172a;"
-        "   color: #f1f5f9;"
-        "   border: 1px solid #334155;"
-        "   border-radius: 8px;"
-        "   padding: 4px;"
-        "}"
-        "QListWidget::item {"
-        "   padding: 10px 12px;"
-        "   margin: 2px 0px;"
-        "   border-radius: 6px;"
-        "   border: 1px solid transparent;"
-        "}"
-        "QListWidget::item:hover {"
-        "   background-color: #1e293b;"
-        "   border-color: #475569;"
-        "}"
-        "QListWidget::item:selected {"
-        "   background-color: #1e293b;"
-        "   border-color: #6366f1;"
-        "   color: #f1f5f9;"
-        "}"
-    );
-    m_mainLayout->addWidget(m_taskList);
-
-    // 连接点击事件
-    connect(m_taskList, &QListWidget::itemClicked, this, &TaskListPanel::onItemClicked);
+    // 子控件由 Qt 对象树自动释放
 }
 
 /**
  * @brief 设置当前显示的计划
- * @param plan 解析后的 TaskPlan
- *
- * @implementation
- * 1. 保存 plan 副本
- * 2. 清空现有列表项
- * 3. 更新目标标签：显示计划目标，更新背景样式为激活状态
- * 4. 遍历 plan.steps，为每个步骤创建 QListWidgetItem
- *    每个 item 使用 HTML 富文本，包含：
- *    - 状态图标（通过 statusIcon() 获取）
- *    - 步骤编号和描述（彩色，通过 statusColor() 获取）
- *    - Agent → 工具映射（灰色小字）
- *    - stepId 存储在 Qt::UserRole 中
- * 5. 计算并设置进度条初始值
+ * @param plan 由 Planner 解析生成的 TaskPlan 对象
  */
 void TaskListPanel::setPlan(const TaskPlan& plan)
 {
-    m_currentPlan = plan;
-    m_taskList->clear();
+    m_currentPlan = plan;  // 保存计划副本，避免外部修改影响显示
 
-    // 更新目标标签为激活状态样式
-    m_goalLabel->setText("目标: " + plan.goal);
-    m_goalLabel->setStyleSheet(
-        "color: #e2e8f0;"
-        "font-size: 13px;"
-        "padding: 10px 12px;"
-        "background-color: #1e293b;"
-        "border: 1px solid #334155;"
-        "border-radius: 8px;"
-    );
-
-    // 为每个步骤创建列表项
-    for (const auto& step : plan.steps) {
-        QListWidgetItem* item = new QListWidgetItem(m_taskList);
-        item->setData(Qt::UserRole, step.stepId);  // 存储 stepId 用于点击识别
-
-        QString icon = statusIcon(step.status);
-        QString color = statusColor(step.status);
-
-        // 使用 HTML 富文本渲染步骤信息
-        QString text = QString(
-            "<div style='display: flex; align-items: center;'>"
-            "  <span style='font-size: 16px; margin-right: 8px;'>%1</span>"
-            "  <div>"
-            "    <div style='font-weight: 600; color: %2;'>步骤 %3: %4</div>"
-            "    <div style='font-size: 11px; color: #64748b; margin-top: 2px;'>%5 → %6</div>"
-            "  </div>"
-            "</div>"
-        ).arg(icon, color, QString::number(step.stepId), step.description.toHtmlEscaped(),
-              step.agent, step.tool);
-
-        item->setText(text);
-        m_taskList->addItem(item);
+    // 清空现有列表条目
+    if (m_taskList) {  // 安全检查
+        m_taskList->clear();  // 清空列表
     }
 
-    // 计算初始进度
-    int progress = plan.totalSteps() > 0
-        ? (plan.completedSteps() * 100 / plan.totalSteps())
-        : 0;
-    m_progressBar->setValue(progress);
+    // 更新目标标签
+    if (m_goalLabel) {  // 安全检查
+        m_goalLabel->setText(plan.goal.isEmpty() ? "（无目标）" : plan.goal);  // 显示目标，缺省时显示占位文本
+        // 切换为激活状态样式（高亮显示）
+        m_goalLabel->setStyleSheet(
+            "QLabel {"
+            "  color: #cbd5e1;"
+            "  font-size: 12px;"
+            "  padding: 8px 12px;"
+            "  background: #312e81;"  // 深靛蓝背景，表示有任务
+            "  border-radius: 6px;"
+            "  border: 1px solid #4f46e5;"
+            "}"
+        );
+    }
+
+    // 重置进度条
+    if (m_progressBar) {  // 安全检查
+        m_progressBar->setValue(0);  // 重置为 0
+    }
+
+    int completedCount = 0;  // 统计已完成步骤数
+    const int total = plan.steps.size();  // 总步骤数
+
+    // 为每个步骤创建列表项
+    for (int i = 0; i < plan.steps.size(); ++i) {
+        const TaskStep& step = plan.steps[i];  // 获取步骤引用
+
+        // 构造富文本：状态图标 + 步骤描述 + Agent→工具映射
+        const QString icon = statusIcon(step.status);  // 状态图标
+        const QString color = statusColor(step.status); // 状态颜色
+        const QString agentTool = step.agent.isEmpty()
+            ? QString()
+            : QString(" · <span style='color:#94a3b8;'>%1 → %2</span>")
+                  .arg(step.agent, step.tool);  // Agent→工具映射
+
+        const QString html = QString(
+            "<div style='padding:2px 0;'>"
+            "  <span style='color:%1; font-size:14px;'>%2</span>"
+            "  <span style='color:#f1f5f9; font-weight:500;'>第%3步：%4</span>"
+            "  %5"
+            "</div>"
+        ).arg(color, icon)
+         .arg(i + 1)  // 步骤编号（从1开始）
+         .arg(step.description.toHtmlEscaped())  // 转义 HTML 特殊字符
+         .arg(agentTool);
+
+        QListWidgetItem* item = new QListWidgetItem(html);  // 创建列表项
+        item->setData(Qt::UserRole, step.stepId);  // 存储 stepId 到 UserRole，用于点击事件识别
+        item->setSizeHint(QSize(0, 38));  // 设置条目高度
+        m_taskList->addItem(item);  // 添加到列表
+
+        if (step.status == StepStatus::Completed) {  // 统计已完成
+            completedCount++;
+        }
+    }
+
+    // 更新进度条
+    if (total > 0 && m_progressBar) {  // 避免除零
+        m_progressBar->setValue(static_cast<int>(100.0 * completedCount / total));  // 设置百分比
+    }
 }
 
 /**
  * @brief 更新指定步骤的状态
- * @param stepId 要更新的步骤编号
+ * @param stepId 步骤编号
  * @param status 新状态
- *
- * @implementation
- * 遍历 m_currentPlan.steps 查找匹配的 stepId：
- * 1. 更新步骤的内部状态
- * 2. 重新生成对应 QListWidgetItem 的 HTML 文本（新的图标和颜色）
- * 3. 重新计算并更新进度条
- *
- * 如果找不到匹配项，静默返回。
  */
 void TaskListPanel::updateStepStatus(int stepId, StepStatus status)
 {
+    // 在 m_currentPlan 中查找匹配的步骤
+    int foundIndex = -1;  // 找到的步骤索引
     for (int i = 0; i < m_currentPlan.steps.size(); ++i) {
-        if (m_currentPlan.steps[i].stepId == stepId) {
-            // 更新内部状态
-            m_currentPlan.steps[i].status = status;
-
-            // 更新 UI 列表项
-            QListWidgetItem* item = m_taskList->item(i);
-            if (item) {
-                const auto& step = m_currentPlan.steps[i];
-                QString icon = statusIcon(status);
-                QString color = statusColor(status);
-
-                QString text = QString(
-                    "<div style='display: flex; align-items: center;'>"
-                    "  <span style='font-size: 16px; margin-right: 8px;'>%1</span>"
-                    "  <div>"
-                    "    <div style='font-weight: 600; color: %2;'>步骤 %3: %4</div>"
-                    "    <div style='font-size: 11px; color: #64748b; margin-top: 2px;'>%5 → %6</div>"
-                    "  </div>"
-                    "</div>"
-                ).arg(icon, color, QString::number(step.stepId), step.description.toHtmlEscaped(),
-                      step.agent, step.tool);
-
-                item->setText(text);
-            }
-
-            break;
+        if (m_currentPlan.steps[i].stepId == stepId) {  // 匹配 stepId
+            m_currentPlan.steps[i].status = status;     // 更新内部状态
+            foundIndex = i;  // 记录索引
+            break;  // 跳出循环
         }
     }
 
-    // 重新计算进度
-    int progress = m_currentPlan.totalSteps() > 0
-        ? (m_currentPlan.completedSteps() * 100 / m_currentPlan.totalSteps())
-        : 0;
-    m_progressBar->setValue(progress);
+    if (foundIndex < 0) {  // 未找到匹配的步骤
+        return;  // 静默返回
+    }
+
+    // 更新对应列表项的显示
+    if (!m_taskList) return;  // 安全检查
+    for (int row = 0; row < m_taskList->count(); ++row) {
+        QListWidgetItem* item = m_taskList->item(row);  // 获取列表项
+        if (item->data(Qt::UserRole).toInt() == stepId) {  // 找到匹配 stepId 的项
+            const TaskStep& step = m_currentPlan.steps[foundIndex];  // 获取更新后的步骤
+
+            // 重新构造富文本
+            const QString icon = statusIcon(step.status);
+            const QString color = statusColor(step.status);
+            const QString agentTool = step.agent.isEmpty()
+                ? QString()
+                : QString(" · <span style='color:#94a3b8;'>%1 → %2</span>")
+                      .arg(step.agent, step.tool);
+
+            const QString html = QString(
+                "<div style='padding:2px 0;'>"
+                "  <span style='color:%1; font-size:14px;'>%2</span>"
+                "  <span style='color:#f1f5f9; font-weight:500;'>第%3步：%4</span>"
+                "  %5"
+                "</div>"
+            ).arg(color, icon)
+             .arg(foundIndex + 1)
+             .arg(step.description.toHtmlEscaped())
+             .arg(agentTool);
+
+            item->setText(html);  // 更新列表项文本
+            break;  // 跳出循环
+        }
+    }
+
+    // 重新计算并更新进度条
+    int completedCount = 0;  // 统计已完成
+    const int total = m_currentPlan.steps.size();  // 总数
+    for (const TaskStep& s : m_currentPlan.steps) {
+        if (s.status == StepStatus::Completed) {  // 累计已完成
+            completedCount++;
+        }
+    }
+    if (total > 0 && m_progressBar) {  // 避免除零
+        m_progressBar->setValue(static_cast<int>(100.0 * completedCount / total));
+    }
 }
 
 /**
  * @brief 清空当前计划显示
- *
- * @implementation
- * 将 TaskListPanel 恢复到初始空状态：
- * 1. 清空 QListWidget
- * 2. 重置目标标签为"暂无任务"和默认样式
- * 3. 重置进度条为 0
- * 4. 清空 m_currentPlan
  */
 void TaskListPanel::clearPlan()
 {
-    m_taskList->clear();
-    m_goalLabel->setText("暂无任务");
-    m_goalLabel->setStyleSheet(
-        "color: #94a3b8;"
-        "font-size: 13px;"
-        "padding: 8px 12px;"
-        "background-color: #1e293b;"
-        "border-radius: 6px;"
+    if (m_taskList) {  // 安全检查
+        m_taskList->clear();  // 清空列表条目
+    }
+
+    // 重置目标标签为空状态
+    if (m_goalLabel) {  // 安全检查
+        m_goalLabel->setText("暂无任务");  // 显示占位文本
+        m_goalLabel->setStyleSheet(  // 恢复默认样式
+            "QLabel {"
+            "  color: #94a3b8;"
+            "  font-size: 12px;"
+            "  padding: 6px 10px;"
+            "  background: #1e293b;"
+            "  border-radius: 4px;"
+            "}"
+        );
+    }
+
+    // 重置进度条
+    if (m_progressBar) {  // 安全检查
+        m_progressBar->setValue(0);  // 重置为 0%
+    }
+
+    m_currentPlan = TaskPlan();  // 重置为空的 TaskPlan 对象
+}
+
+/**
+ * @brief QListWidget 条目点击事件处理槽函数
+ * @param item 被点击的列表项指针
+ */
+void TaskListPanel::onItemClicked(QListWidgetItem* item)
+{
+    if (!item) {  // 异常情况：item 为空
+        return;   // 直接返回
+    }
+    const int stepId = item->data(Qt::UserRole).toInt();  // 提取 stepId
+    emit stepClicked(stepId);  // 发射 stepClicked 信号
+}
+
+/**
+ * @brief 创建和布局所有 UI 子控件
+ */
+void TaskListPanel::setupUI()
+{
+    // ========== 创建主垂直布局 ==========
+    m_mainLayout = new QVBoxLayout(this);  // 创建垂直布局，父对象为本组件
+    m_mainLayout->setContentsMargins(12, 12, 12, 12);  // 设置四周内边距12像素
+    m_mainLayout->setSpacing(10);  // 设置控件间距10像素
+    this->setLayout(m_mainLayout);  // 应用布局到本组件
+
+    // ========== 创建标题标签 ==========
+    m_titleLabel = new QLabel("任务列表", this);  // 创建标题标签
+    m_titleLabel->setStyleSheet(  // 设置标题样式
+        "QLabel {"
+        "  color: #f1f5f9;"        // 极浅灰白色
+        "  font-size: 16px;"       // 16px 字号
+        "  font-weight: 600;"      // 半加粗
+        "  padding-bottom: 8px;"   // 底部8px间隙
+        "}"
     );
-    m_progressBar->setValue(0);
-    m_currentPlan = TaskPlan();
+    m_mainLayout->addWidget(m_titleLabel);  // 添加到主布局
+
+    // ========== 创建目标描述标签 ==========
+    m_goalLabel = new QLabel("暂无任务", this);  // 创建目标标签
+    m_goalLabel->setWordWrap(true);  // 启用自动换行
+    m_goalLabel->setStyleSheet(  // 设置默认样式
+        "QLabel {"
+        "  color: #94a3b8;"
+        "  font-size: 12px;"
+        "  padding: 6px 10px;"
+        "  background: #1e293b;"
+        "  border-radius: 4px;"
+        "}"
+    );
+    m_mainLayout->addWidget(m_goalLabel);  // 添加到主布局
+
+    // ========== 创建进度条 ==========
+    m_progressBar = new QProgressBar(this);  // 创建进度条
+    m_progressBar->setRange(0, 100);  // 范围 0-100（百分比）
+    m_progressBar->setValue(0);  // 初始值 0
+    m_progressBar->setTextVisible(false);  // 隐藏百分比文字
+    m_progressBar->setFixedHeight(6);  // 固定高度 6px（细长）
+    m_progressBar->setStyleSheet(  // 设置自定义 QSS 样式
+        "QProgressBar {"
+        "  background: #1e293b;"  // 背景色
+        "  border: none;"
+        "  border-radius: 3px;"  // 圆角
+        "}"
+        "QProgressBar::chunk {"
+        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+        "    stop:0 #6366f1, stop:1 #8b5cf6);"  // 靛蓝到紫色渐变
+        "  border-radius: 3px;"
+        "}"
+    );
+    m_mainLayout->addWidget(m_progressBar);  // 添加到主布局
+
+    // ========== 创建步骤列表 ==========
+    m_taskList = new QListWidget(this);  // 创建 QListWidget
+    m_taskList->setStyleSheet(  // 设置自定义 QSS 样式
+        "QListWidget {"
+        "  background: transparent;"   // 背景透明
+        "  border: none;"              // 无边框
+        "  outline: 0;"                // 无焦点虚线框
+        "}"
+        "QListWidget::item {"
+        "  padding: 6px 8px;"          // 每项内边距
+        "  border-radius: 4px;"        // 圆角
+        "  margin: 1px 0;"             // 项之间小间距
+        "}"
+        "QListWidget::item:hover {"    // 悬停效果
+        "  background: #1e293b;"
+        "}"
+        "QListWidget::item:selected {" // 选中效果
+        "  background: #312e81;"
+        "  color: #f1f5f9;"
+        "}"
+    );
+    connect(m_taskList, &QListWidget::itemClicked,  // 绑定 itemClicked 信号
+            this, &TaskListPanel::onItemClicked);   // 到本类的 onItemClicked 槽
+    m_mainLayout->addWidget(m_taskList, 1);  // 添加到主布局，stretch=1（占据剩余空间）
 }
 
 /**
  * @brief 获取状态对应的图标字符
  * @param status 步骤状态
- * @return Unicode 图标字符
- *
- * 图标映射：
- * - Pending:   ○ (空心圆，等待中)
- * - Running:   ◐ (半圆，执行中)
- * - Completed: ✓ (对勾，成功)
- * - Failed:    ✗ (叉号，失败)
- * - Skipped:   ⊘ (禁止符，跳过)
+ * @return Unicode 图标字符串
  */
 QString TaskListPanel::statusIcon(StepStatus status) const
 {
     switch (status) {
-        case StepStatus::Pending:   return "○";
-        case StepStatus::Running:   return "◐";
-        case StepStatus::Completed: return "✓";
-        case StepStatus::Failed:    return "✗";
-        case StepStatus::Skipped:   return "⊘";
+        case StepStatus::Pending:   return "○";  // 空心圆：等待
+        case StepStatus::Running:   return "◐";  // 半圆：执行中
+        case StepStatus::Completed: return "✓";  // 对勾：成功
+        case StepStatus::Failed:    return "✗";  // 叉号：失败
+        default:                    return "?";  // 未知
     }
-    return "○";
 }
 
 /**
  * @brief 获取状态对应的颜色代码
  * @param status 步骤状态
  * @return CSS 颜色字符串
- *
- * 颜色映射：
- * - Pending:   #94a3b8 (slate-400，灰色，表示等待)
- * - Running:   #6366f1 (indigo-500，紫色，表示执行中)
- * - Completed: #22c55e (green-500，绿色，表示成功)
- * - Failed:    #ef4444 (red-500，红色，表示失败)
- * - Skipped:   #64748b (slate-500，灰色，表示跳过)
  */
 QString TaskListPanel::statusColor(StepStatus status) const
 {
     switch (status) {
-        case StepStatus::Pending:   return "#94a3b8";
-        case StepStatus::Running:   return "#6366f1";
-        case StepStatus::Completed: return "#22c55e";
-        case StepStatus::Failed:    return "#ef4444";
-        case StepStatus::Skipped:   return "#64748b";
-    }
-    return "#94a3b8";
-}
-
-/**
- * @brief 列表项点击事件处理
- * @param item 被点击的 QListWidgetItem
- *
- * @implementation
- * 从 item 的 Qt::UserRole 数据中提取 stepId，发射 stepClicked 信号。
- * 如果 item 为空，不做任何操作。
- */
-void TaskListPanel::onItemClicked(QListWidgetItem* item)
-{
-    if (item) {
-        int stepId = item->data(Qt::UserRole).toInt();
-        emit stepClicked(stepId);
+        case StepStatus::Pending:   return "#94a3b8";  // 灰色：等待
+        case StepStatus::Running:   return "#6366f1";  // 靛蓝：执行中
+        case StepStatus::Completed: return "#22c55e";  // 绿色：成功
+        case StepStatus::Failed:    return "#ef4444";  // 红色：失败
+        default:                    return "#cbd5e1";  // 浅灰：未知
     }
 }

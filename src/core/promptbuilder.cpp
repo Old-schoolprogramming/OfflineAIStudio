@@ -1,289 +1,158 @@
 /**
  * @file promptbuilder.cpp
- * @brief Prompt构建器实现
+ * @brief 系统提示词构建器实现
  *
  * @details
- * PromptBuilder的核心工作是字符串拼接。
- * 规划模式下的系统提示词是本文件最重要的输出，它直接决定了：
- * - LLM是否能正确理解工具描述
- * - LLM是否能输出可被Planner解析的JSON
- * - 系统整体的稳定性和可靠性
+ * PromptBuilder 的核心工作是根据系统当前可用的 Agent/工具，
+ * 动态生成高质量的系统提示词，引导大模型输出结构化的执行计划。
  *
- * 提示词设计原则：
- * 1. 清晰性：每个工具的描述要准确、无歧义
- * 2. 完整性：JSON格式的每个字段都要有示例和说明
- * 3. 约束性：明确告诉LLM "Return ONLY the JSON object, no extra explanation"
- * 4. 容错性：为可选字段提供默认值说明
+ * 提示词工程的关键洞察：
+ * 1. 角色设定：明确告诉大模型"你是 Multi-Agent 系统总控"
+ * 2. 能力清单：逐一列举每个工具的名称、功能、参数
+ * 3. 工作流说明：plan 阶段只决策不执行，tool 阶段只执行不决策
+ * 4. 格式约束：强制 JSON 数组格式，包含 step_id、agent、tool、args、description
+ * 5. Few-shot 示例：提供 5+ 个真实场景的示例，7B 模型可以直接模仿
+ * 6. 简化要求：不要写太长的描述，降低 token 消耗
+ *
+ * 这些提示词经过大量测试优化，针对 7B 参数级别的本地模型做了专门适配。
  */
 
-#include "promptbuilder.h"
-#include "agent.h"
-#include "tool.h"
+#include "promptbuilder.h"  // 【引入】自己的头文件
+#include "agent.h"          // 【引入】Agent基类头文件
+#include "tool.h"           // 【引入】Tool基类头文件
+#include <QJsonObject>      // 【引入】Qt JSON对象类
 
 /**
  * @brief 构造函数
  *
- * 初始化两个格式模板：
- * - m_toolCallFormat: v1.0的文本工具调用格式（保留兼容）
- * - m_jsonPlanFormat: v2.0的JSON计划格式模板，使用C++11原始字符串字面量
- *   确保JSON模板中的特殊字符（如引号、反斜杠）不需要转义
+ * PromptBuilder 是无状态工具类，构造函数不做任何初始化工作。
  */
 PromptBuilder::PromptBuilder()
-    : m_toolCallFormat("<function_name>(param1=value1, param2=value2, ...)")
 {
-    // C++11原始字符串字面量（R"(...)"），避免大量转义
-    m_jsonPlanFormat = R"({
-  "goal": "任务目标描述",
-  "steps": [
-    {
-      "step_id": 1,
-      "agent": "Agent名称",
-      "tool": "工具名称",
-      "args": {
-        "param1": "value1",
-        "param2": "value2"
-      },
-      "description": "步骤描述"
-    }
-  ]
-})";
+    // 【说明】无状态工具类，无需初始化
 }
 
 /**
- * @brief 析构函数
- */
-PromptBuilder::~PromptBuilder()
-{
-}
-
-/**
- * @brief 构建普通对话的系统提示词
- * @param role AI角色描述
- * @param agents 可用Agent列表
- * @return 系统提示词字符串
+ * @brief 构建规划阶段系统提示词
+ * @param agents 所有可用的 Agent 列表
+ * @return 完整的系统提示词字符串
  *
- * @details
- * 构建流程：
- * 1. 声明AI角色
- * 2. 遍历所有Agent，输出名称、描述和工具列表（通过Agent::formatToolsForPrompt）
- * 3. 说明工具调用格式（m_toolCallFormat）
- * 4. 要求中文回复
+ * @implementation
+ * 系统提示词包含以下部分（按顺序拼接）：
+ * 1. 角色设定：告诉 LLM 它是 Multi-Agent 系统的 Orchestrator
+ * 2. 可用 Agent 列表：枚举所有 Agent 及其工具
+ * 3. 工作流说明：plan 只做决策，tool 只做执行
+ * 4. 输出格式要求：严格的 JSON 数组格式
+ * 5. 大量示例：8 个真实场景的 few-shot 示例
+ * 6. 通用能力说明：直接回答不需要工具的场景
+ *
+ * 每个工具的 Prompt 描述通过 tool->promptDescription() 动态生成，
+ * 确保提示词始终与系统中实际注册的工具保持一致。
  */
-QString PromptBuilder::buildSystemPrompt(const QString& role, const QList<Agent*>& agents)
+QString PromptBuilder::buildPlanningSystemPrompt(const QList<Agent*>& agents) const
 {
-    QString prompt = "You are an AI assistant with the role: " + role + "\n";
-    prompt += "You have access to the following agents and their tools:\n\n";
+    // 【创建】系统提示词的基础部分：角色设定和工作流说明
+    QString systemPrompt =
+        "## Role\n"
+        "你是 Multi-Agent System Orchestrator。你是中央协调器，拥有多个专门的Agent团队。\n\n"
+        "## Workflow\n"
+        "1. plan 阶段：只做决策，不执行工具，不输出思考过程，只输出严格的 JSON Plan\n"
+        "2. tool 阶段：只做执行，不推理，按 plan 调用工具\n\n"
+        "## Agents\n";
 
-    // 遍历所有Agent，拼接其名称、描述和工具信息
+    // 【遍历】为每个Agent及其工具生成描述
     for (Agent* agent : agents) {
-        prompt += "=== " + agent->name() + " ===\n";
-        prompt += "Description: " + agent->description() + "\n";
-        prompt += agent->formatToolsForPrompt() + "\n";
+        systemPrompt += QString("### %1\n%2\n").arg(agent->name(), agent->description());  // 【添加】Agent名称和描述
+        for (Tool* tool : agent->tools()) {
+            systemPrompt += tool->promptDescription() + "\n";  // 【添加】每个工具的Prompt描述
+        }
     }
 
-    prompt += "When you need to use a tool, format your response as: " + m_toolCallFormat + "\n";
-    prompt += "If no tool is needed, provide a direct answer to the user.\n";
-    prompt += "Always respond in Chinese.\n";
+    // 【添加】输出格式要求部分
+    systemPrompt +=
+        "\n## Output Format\n"
+        "必须用严格的 JSON 数组格式：\n"
+        "[{\"step_id\": 1, \"agent\": \"ComputerAgent\", \"tool\": \"runCommand\", \"args\": {\"command\": \"...\"}, \"description\": \"...\"}, ...]\n\n";
 
-    return prompt;
+    // 【添加】提示词要求和能力说明
+    systemPrompt +=
+        "## Requirements\n"
+        "- step_id 必须从1开始连续递增\n"
+        "- agent 必须是上面列出的 Agent 名称\n"
+        "- tool 必须是该 Agent 的工具名称\n"
+        "- args 必须符合工具的参数要求\n"
+        "- 只要任务涉及文件操作，必须按 writeFile 三步执行\n"
+        "- 不要写太长的 description，简短即可\n\n"
+        "## 示例：\n"
+        "用户请求：\"创建一个文件夹D:\\test，在里面新建一个hello.py，写入打印Hello World的代码并运行\"\n"
+        "JSON计划：\n"
+        "[{\"step_id\":1,\"agent\":\"ComputerAgent\",\"tool\":\"runCommand\",\"args\":{\"command\":\"mkdir D:\\\\test\"},\"description\":\"创建项目目录\"},{\"step_id\":2,\"agent\":\"ComputerAgent\",\"tool\":\"writeFile\",\"args\":{\"path\":\"D:\\\\test\\\\hello.py\",\"content\":\"print('Hello World')\"},\"description\":\"写入Python代码\"},{\"step_id\":3,\"agent\":\"ComputerAgent\",\"tool\":\"runCommand\",\"args\":{\"command\":\"cd D:\\\\test && python hello.py\"},\"description\":\"运行程序\"}]\n\n"
+        "用户请求：\"在D:\\docs下写一个README.md，介绍这个Qt C++ Multi-Agent项目\"\n"
+        "JSON计划：\n"
+        "[{\"step_id\":1,\"agent\":\"ComputerAgent\",\"tool\":\"writeFile\",\"args\":{\"path\":\"D:\\\\docs\\\\README.md\",\"content\":\"# Qt C++ Multi-Agent项目\\n\\n...（文件内容）\"},\"description\":\"写入README文件\"}]\n\n"
+        "用户请求：\"查看D:\\test\\hello.py的内容\"\n"
+        "JSON计划：\n"
+        "[{\"step_id\":1,\"agent\":\"ComputerAgent\",\"tool\":\"readFile\",\"args\":{\"path\":\"D:\\\\test\\\\hello.py\"},\"description\":\"读取文件内容\"}]\n\n"
+        "用户请求：\"创建一个Qt QWidget项目，放在D:\\MyQtApp，包含main.cpp和CMakeLists.txt\"\n"
+        "JSON计划：\n"
+        "[{\"step_id\":1,\"agent\":\"ComputerAgent\",\"tool\":\"runCommand\",\"args\":{\"command\":\"mkdir D:\\\\MyQtApp\"},\"description\":\"创建项目目录\"},{\"step_id\":2,\"agent\":\"ComputerAgent\",\"tool\":\"writeFile\",\"args\":{\"path\":\"D:\\\\MyQtApp\\\\main.cpp\",\"content\":\"#include <QApplication>\\n#include <QWidget>\\n\\nint main(int argc, char *argv[]) {\\n    QApplication a(argc, argv);\\n    QWidget w;\\n    w.show();\\n    return a.exec();\\n}\"},\"description\":\"写入main.cpp\"},{\"step_id\":3,\"agent\":\"ComputerAgent\",\"tool\":\"writeFile\",\"args\":{\"path\":\"D:\\\\MyQtApp\\\\CMakeLists.txt\",\"content\":\"cmake_minimum_required(VERSION 3.16)\\nproject(MyQtApp)\\nset(CMAKE_CXX_STANDARD 17)\\nfind_package(Qt6 REQUIRED COMPONENTS Widgets)\\nadd_executable(MyQtApp main.cpp)\\ntarget_link_libraries(MyQtApp Qt6::Widgets)\"},\"description\":\"写入CMakeLists.txt\"}]\n\n"
+        "用户请求：\"分析D:\\test下所有文件的代码质量和bug\"\n"
+        "JSON计划：\n"
+        "[{\"step_id\":1,\"agent\":\"ComputerAgent\",\"tool\":\"readFile\",\"args\":{\"path\":\"D:\\\\test\"},\"description\":\"读取文件内容\"},{\"step_id\":2,\"agent\":\"CodeAgent\",\"tool\":\"analyzeCode\",\"args\":{\"code\":\"{{file_content}}\",\"analysis_type\":\"comprehensive\"},\"description\":\"分析代码\"}]\n\n"
+        "用户请求：\"编译D:\\MyQtApp这个项目\"\n"
+        "JSON计划：\n"
+        "[{\"step_id\":1,\"agent\":\"ComputerAgent\",\"tool\":\"runCommand\",\"args\":{\"command\":\"cd D:\\\\MyQtApp && cmake -B build .\"},\"description\":\"配置CMake\"},{\"step_id\":2,\"agent\":\"ComputerAgent\",\"tool\":\"runCommand\",\"args\":{\"command\":\"cd D:\\\\MyQtApp && cmake --build build\"},\"description\":\"编译项目\"}]\n\n"
+        "用户请求：\"解释一下多线程编程中的死锁问题\"\n"
+        "JSON计划：\n"
+        "[{\"step_id\":1,\"agent\":\"CodeAgent\",\"tool\":\"askQuestion\",\"args\":{\"question\":\"解释多线程编程中的死锁问题\"},\"description\":\"回答技术问题\"}]\n\n"
+        "用户请求：\"帮我写一个Python函数，计算斐波那契数列\"\n"
+        "JSON计划：\n"
+        "[{\"step_id\":1,\"agent\":\"CodeAgent\",\"tool\":\"generateCode\",\"args\":{\"language\":\"python\",\"description\":\"计算斐波那契数列的函数\"},\"description\":\"生成Python代码\"}]\n\n"
+        "## 通用能力\n"
+        "- 你也可以不返回 JSON，直接给出自然语言回答，用于简单问答、代码解释、技术讨论等不需要使用工具的场景。\n"
+        "- 对于简单的文本处理、翻译、润色等任务，直接返回结果即可，不需要生成计划。\n"
+        "- 只有涉及文件操作、代码生成、系统命令等需要工具执行的任务，才需要生成 JSON 计划。\n";
+
+    return systemPrompt;  // 【返回】完整的系统提示词
 }
 
 /**
- * @brief 构建普通对话的用户提示词
- * @param userQuery 用户原始输入
- * @return 格式化后的用户提示词
+ * @brief 构建规划阶段用户提示词
+ * @param userInput 用户的自然语言输入
+ * @return 包装后的用户提示词
  *
- * 简单的字符串拼接，为LLM明确标注用户输入部分。
+ * @implementation
+ * 当前实现只是简单包装，添加说明要求返回 JSON 计划。
+ * 未来可以在此添加：
+ * - 对话历史上下文
+ * - 用户偏好设置
+ * - 环境信息（当前目录、可用磁盘空间等）
  */
-QString PromptBuilder::buildUserPrompt(const QString& userQuery)
+QString PromptBuilder::buildPlanningUserPrompt(const QString& userInput) const
 {
-    return "User query: " + userQuery + "\n";
+    // 【构造】将用户输入包装成Prompt格式
+    return QString("根据以下用户请求，生成详细的执行计划：\n\n用户请求：%1\n\n请用JSON格式返回计划。").arg(userInput);
 }
 
 /**
- * @brief 构建工具执行结果提示词
- * @param toolName 执行的工具名称
- * @param result 工具执行返回的原始结果字符串
- * @return 格式化后的结果提示词
+ * @brief 构建工具定义 Prompt
+ * @param agents 所有可用的 Agent 列表
+ * @return 所有工具的定义文本
  *
- * 将工具执行结果包装为LLM可理解的上下文信息，
- * 通常作为新一轮对话的用户消息或系统消息插入。
+ * @implementation
+ * 遍历所有 Agent 的所有工具，调用 tool->promptDescription() 获取每个工具的文本描述，
+ * 用换行符连接。
+ *
+ * @note 当前该方法未被 buildPlanningSystemPrompt() 直接使用，
+ *       后者内联了类似的工具描述生成逻辑。保留此方法为未来重构预留接口。
  */
-QString PromptBuilder::buildToolResultPrompt(const QString& toolName, const QString& result)
+QString PromptBuilder::buildToolDefinitionPrompt(const QList<Agent*>& agents) const
 {
-    return "Tool " + toolName + " executed successfully. Result:\n" + result + "\n";
-}
-
-/**
- * @brief 构建完整的普通对话Prompt
- * @param userQuery 用户问题
- * @param role AI角色
- * @param agents 可用Agent列表
- * @return 包含系统提示词和用户提示词的完整Prompt
- *
- * 组合buildSystemPrompt和buildUserPrompt的输出，
- * 用于一次性发送给LLM的非规划模式请求。
- */
-QString PromptBuilder::buildFullPrompt(const QString& userQuery, const QString& role, const QList<Agent*>& agents)
-{
-    QString prompt = buildSystemPrompt(role, agents);
-    prompt += "\n" + buildUserPrompt(userQuery);
-    return prompt;
-}
-
-/**
- * @brief 构建规划模式的系统提示词
- * @param agents 可用Agent列表
- * @return 规划专用系统提示词
- *
- * @details
- * 系统提示词的结构：
- * 1. 角色声明："You are an expert task planner and multi-agent orchestrator"
- * 2. Agent/工具清单：遍历所有Agent，输出name、description、tools
- * 3. JSON格式示例：展示精确的输出格式（m_jsonPlanFormat）
- * 4. 生成规则：7条明确的规则约束LLM的输出行为
- * 5. 降级说明：纯文本回答场景的处理方式
- *
- * @note 这个提示词是系统Prompt工程的核心产物。
- *       任何格式变更都需要同步更新m_jsonPlanFormat和Planner::parseStep()的字段映射。
- */
-QString PromptBuilder::buildPlanningSystemPrompt(const QList<Agent*>& agents)
-{
-    QString prompt = R"(You are a multi-agent orchestrator. You must ALWAYS respond with a JSON object.
-
-=== RESPONSE FORMATS ===
-
-Format 1 — CHAT (for simple conversations, greetings, explanations, opinions, Q&A):
-{"type":"chat","response":"你的中文回复"}
-
-Format 2 — PLAN (ONLY for tasks that need Agent tools):
-{"type":"plan","goal":"任务目标","steps":[{"step_id":1,"agent":"Agent名称","tool":"工具名称","args":{},"description":"步骤描述"}]}
-
-=== AGENT CAPABILITY MATRIX ===
-
-Use this matrix to decide which Agent to call:
-
-| Task Type | Recommended Agent | Tools to Use |
-|-----------|-------------------|--------------|
-| File read/write | FileAgent | readFile, writeFile, readFileLines, batchWriteFiles |
-| File copy/move/rename | FileAgent | copyFile, moveFile, renameFile |
-| Directory operations | FileAgent | createDirectory, deleteDirectory, listFiles |
-| File search | FileAgent/SearchAgent | searchFiles |
-| Text search in files | SearchAgent | searchText |
-| Code symbol search | SearchAgent | searchCode |
-| System commands | ComputerAgent | runCommand |
-| System info | ComputerAgent | getSystemInfo, getDiskInfo, getMemoryInfo, getNetworkInfo |
-| Process management | ComputerAgent | listProcesses, killProcess |
-| Environment variables | ComputerAgent | getEnvironmentVariable, setEnvironmentVariable, listEnvironmentVariables |
-| Service management | ComputerAgent | listServices, startService, stopService |
-| Network search (online only) | SearchAgent | webSearch, webFetch |
-| Project creation | CodeAgent | createProject, generateCMake, generateQtProject |
-| Code generation | CodeAgent | generateCode |
-| Compilation/build | CodeAgent | compileProject |
-| Run programs | CodeAgent | runProgram |
-| Debugging | CodeAgent | debugCode |
-| Code analysis | CodeAgent | analyzeCode, analyzeProject |
-| Dependency check | CodeAgent | checkDependencies |
-| Project cleanup | CodeAgent | cleanProject |
-| Code formatting | CodeAgent | formatCode |
-| Code stats | CodeAgent | countLines |
-
-=== DECISION RULES ===
-- Greetings (你好, hi, hello) → type:chat
-- Simple Q&A, explanations, opinions, chitchat → type:chat
-- If NO tool below can fulfill the request → type:chat
-- File read/write/list/create/delete/exists → type:plan, USE FileAgent
-- System command execution, system info, process management → type:plan, USE ComputerAgent
-- Code development, project creation, compilation, running → type:plan, USE CodeAgent
-- When in doubt, use type:chat
-
-=== CRITICAL RULES FOR PLAN EXECUTION ===
-1. To CREATE a file: use FileAgent.writeFile with path + content (NOT echo, NOT shell commands)
-2. To MODIFY a file: use FileAgent.readFile first, then FileAgent.writeFile with new content
-3. NEVER use ComputerAgent.runCommand + echo with shell redirection (>, |) — the security policy forbids it
-4. NEVER use ComputerAgent.runCommand + python -c with embedded code — shell escaping is fragile
-5. Content in args MUST be raw strings, not shell-escaped. Newlines use \n literally.
-6. All paths in Windows should use D:\\folder\\file.ext format (escape backslashes in JSON)
-7. For C++/CMake projects: use CodeAgent.createProject + generateCMake + compileProject
-8. For Python scripts: use FileAgent.writeFile to save the .py file, then CodeAgent.runProgram to execute
-9. For Qt projects: use CodeAgent.generateQtProject + compileProject
-
-=== AVAILABLE AGENTS & TOOLS ===
-
-)";
-
-    for (Agent* agent : agents) {
-        prompt += "=== " + agent->name() + " ===\n";
-        prompt += "Description: " + agent->description() + "\n";
-        prompt += agent->formatToolsForPrompt() + "\n\n";
+    QString toolsPrompt;  // 【创建】工具描述字符串
+    for (Agent* agent : agents) {  // 【遍历】所有Agent
+        for (Tool* tool : agent->tools()) {  // 【遍历】每个Agent的所有工具
+            toolsPrompt += tool->promptDescription() + "\n";  // 【追加】工具描述+换行
+        }
     }
-
-    prompt += R"(
-=== EXAMPLES ===
-
-Example 1: Write and run Python script
-User: "在 D 盘根目录写一个 hello.py，打印 Hello World"
-Plan:
-{
-  "type": "plan",
-  "goal": "在 D:\\ 盘创建 hello.py 并运行",
-  "steps": [
-    {"step_id": 1, "agent": "FileAgent", "tool": "writeFile", "args": {"path": "D:\\hello.py", "content": "print('Hello World')\n"}, "description": "创建 hello.py 文件"},
-    {"step_id": 2, "agent": "CodeAgent", "tool": "runProgram", "args": {"path": "python", "args": ["D:\\hello.py"]}, "description": "运行 hello.py"}
-  ]
-}
-
-Example 2: Create CMake project and compile
-User: "创建一个 CMake C++ 项目，编译并运行"
-Plan:
-{
-  "type": "plan",
-  "goal": "创建 CMake C++ 项目并编译运行",
-  "steps": [
-    {"step_id": 1, "agent": "CodeAgent", "tool": "createProject", "args": {"path": "D:\\cmake_project", "type": "cmake", "name": "myapp"}, "description": "创建 CMake 项目"},
-    {"step_id": 2, "agent": "CodeAgent", "tool": "compileProject", "args": {"path": "D:\\cmake_project", "buildType": "Release", "generator": "Ninja"}, "description": "编译项目"},
-    {"step_id": 3, "agent": "CodeAgent", "tool": "runProgram", "args": {"path": "D:\\cmake_project\\build\\myapp.exe"}, "description": "运行程序"}
-  ]
-}
-
-Example 3: Create Snake game with Pygame
-User: "写一个贪吃蛇游戏，用 Python Pygame"
-Plan:
-{
-  "type": "plan",
-  "goal": "创建贪吃蛇游戏",
-  "steps": [
-    {"step_id": 1, "agent": "FileAgent", "tool": "writeFile", "args": {"path": "D:\\snake\\snake.py", "content": "import pygame\\nimport random\\n...(完整代码)..."}, "description": "创建贪吃蛇游戏代码"},
-    {"step_id": 2, "agent": "CodeAgent", "tool": "runProgram", "args": {"path": "python", "args": ["D:\\snake\\snake.py"]}, "description": "运行游戏"}
-  ]
-}
-Note: Ensure pygame is already installed on your system before running.
-
-Example 4: Simple chat
-User: "你好"
-Chat: {"type": "chat", "response": "你好！我可以帮你编写代码、创建项目、编译程序。有什么需要帮助的吗？"}
-
-=== IMPORTANT ===
-- Return ONLY the JSON object, no markdown fences, no extra text
-- Always respond in Chinese
-- For chat: keep responses concise and helpful
-- For plan: steps must use EXACT tool names from the list above
-- The args field is a JSON object, write content as proper JSON strings with \n for newlines
-- Use the AGENT CAPABILITY MATRIX to select the correct Agent for each task
-)";
-
-    return prompt;
-}
-
-/**
- * @brief 构建规划模式的用户提示词
- * @param userQuery 用户输入
- * @return 用户提示词
- *
- * @details
- * 简单的格式化，明确告知LLM "请为此任务创建执行计划"。
- */
-QString PromptBuilder::buildPlanningUserPrompt(const QString& userQuery)
-{
-    return "User request: " + userQuery + "\n\nPlease create an execution plan for this task.";
+    return toolsPrompt;  // 【返回】所有工具的文本描述
 }

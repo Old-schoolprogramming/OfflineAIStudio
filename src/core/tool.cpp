@@ -3,23 +3,24 @@
  * @brief 工具类实现
  *
  * @details
- * Tool类封装了Agent可调用的具体工具/函数的描述信息。
- * 每个Tool包含名称、描述以及一组参数定义，
- * 并支持将自身格式化为LLM提示词中可用的文本描述。
+ * Tool 类的具体实现，使用 std::function 作为执行器，
+ * 避免为每个工具创建大量子类。
  */
 
-#include "tool.h"
+#include "tool.h"  // 【引入】自己的头文件
 
 /**
  * @brief 构造函数
- * @param name 工具名称，用于在提示词和JSON中标识该工具
- * @param description 工具功能描述，帮助LLM理解何时使用此工具
- *
- * 初始化工具的基本信息，参数列表初始为空。
+ * @param name 工具名称
+ * @param description 工具功能描述
+ * @param executor 执行器
  */
-Tool::Tool(const QString& name, const QString& description)
-    : m_name(name), m_description(description)
+Tool::Tool(const QString& name, const QString& description, Executor executor)
+    : m_name(name)              // 【初始化】工具名称
+    , m_description(description) // 【初始化】工具描述
+    , m_executor(executor)       // 【初始化】执行器
 {
+    // 【说明】基类构造函数体为空
 }
 
 /**
@@ -27,83 +28,100 @@ Tool::Tool(const QString& name, const QString& description)
  */
 Tool::~Tool()
 {
+    // 【说明】基类析构函数体为空
+    // std::function 会自动释放其持有的资源
 }
 
 /**
  * @brief 获取工具名称
- * @return 工具标识字符串
  */
 QString Tool::name() const
 {
-    return m_name;
+    return m_name;  // 【返回】存储的工具名称
 }
 
 /**
  * @brief 获取工具描述
- * @return 工具功能描述字符串
  */
 QString Tool::description() const
 {
-    return m_description;
+    return m_description;  // 【返回】存储的工具描述
 }
 
 /**
- * @brief 添加参数定义
- * @param name 参数名称
- * @param type 参数类型（如"string", "int", "bool"）
- * @param description 参数用途描述
- * @param required 是否为必填参数
- * @param defaultValue 可选参数的默认值（空字符串表示无默认值）
+ * @brief 获取工具的 Prompt 描述
  *
- * @details
- * 构造Parameter结构体并追加到内部参数列表中。
- * 参数顺序决定了在提示词中的展示顺序。
+ * @implementation
+ * 格式："name: description"
+ * 如果有参数，则附加："参数：name1(type, 必填/可选, 默认值) - desc1; ..."
  */
-void Tool::addParameter(const QString& name, const QString& type, const QString& description, bool required, const QString& defaultValue)
+QString Tool::promptDescription() const
 {
-    Parameter param;
-    param.name = name;
-    param.type = type;
-    param.description = description;
-    param.required = required;
-    param.defaultValue = defaultValue;
-    m_parameters.append(param);
-}
+    QString result = m_name + ": " + m_description;  // 【构造】基础描述
 
-/**
- * @brief 获取所有参数定义
- * @return 参数列表的副本
- */
-QList<Parameter> Tool::parameters() const
-{
-    return m_parameters;
-}
-
-/**
- * @brief 将工具格式化为提示词文本
- * @return 格式化后的工具描述字符串
- *
- * @details
- * 生成适合嵌入LLM系统提示词的工具说明，格式如下：
- * @code
- * - toolName: toolDescription
- *   Parameters:
- *     - paramName (type) [required]: paramDescription (default: xxx)
- * @endcode
- *
- * 必填参数标记为[required]，可选参数若有默认值则一并显示。
- */
-QString Tool::formatForPrompt() const
-{
-    QString result = "- " + m_name + ": " + m_description + "\n";
-    result += "  Parameters:\n";
-    
-    // 遍历所有参数，生成带类型、必填标记和默认值的描述行
-    for (const Parameter& param : m_parameters) {
-        QString requiredStr = param.required ? "[required]" : "[optional]";
-        QString defaultStr = !param.defaultValue.isEmpty() ? " (default: " + param.defaultValue + ")" : "";
-        result += "    - " + param.name + " (" + param.type + ") " + requiredStr + ": " + param.description + defaultStr + "\n";
+    if (!m_parameters.isEmpty()) {  // 【判断】如果存在参数
+        result += "，参数：";  // 【添加】参数标识
+        QStringList paramDescs;  // 【创建】参数描述列表
+        for (const Parameter& param : m_parameters) {  // 【遍历】每个参数
+            QString part = param.name + "(" + param.type;  // 【构造】name(type
+            if (param.required) {  // 【判断】是否必填
+                part += ", 必填";  // 【添加】必填标识
+            } else {  // 【分支】可选参数
+                part += ", 可选";  // 【添加】可选标识
+                if (!param.defaultValue.isEmpty()) {  // 【判断】有默认值
+                    part += ", 默认" + param.defaultValue;  // 【添加】默认值
+                }
+            }
+            part += ") - " + param.description;  // 【添加】参数描述
+            paramDescs.append(part);  // 【追加】到列表
+        }
+        result += paramDescs.join("; ");  // 【拼接】用分号分隔
     }
-    
-    return result;
+
+    return result;  // 【返回】完整 Prompt 描述
+}
+
+/**
+ * @brief 执行工具
+ * @param args 工具参数
+ * @return 执行结果
+ *
+ * @implementation
+ * 直接调用存储的 executor 函数对象。
+ * 如果 executor 为空，返回错误信息。
+ */
+QVariantMap Tool::execute(const QVariantMap& args)
+{
+    if (!m_executor) {  // 【判断】执行器是否为空
+        QVariantMap result;  // 【创建】结果字典
+        result["success"] = false;  // 【标记】执行失败
+        result["error"] = "Tool '" + m_name + "' has no executor";  // 【设置】错误信息
+        return result;  // 【返回】错误结果
+    }
+    return m_executor(args);  // 【调用】存储的执行器
+}
+
+/**
+ * @brief 添加参数
+ */
+void Tool::addParameter(const QString& name, const QString& type, const QString& desc,
+                        bool required, const QString& defaultValue)
+{
+    Parameter param;  // 【创建】参数结构
+    param.name = name;             // 【设置】参数名称
+    param.type = type;             // 【设置】参数类型
+    param.description = desc;      // 【设置】参数描述
+    param.required = required;     // 【设置】是否必填
+    param.defaultValue = defaultValue;  // 【设置】默认值
+    m_parameters.append(param);    // 【追加】到参数列表
+}
+
+/**
+ * @brief 构建参数描述字符串
+ *
+ * 生成格式："name(type) - desc"
+ */
+QString Tool::buildParamDesc(const QString& name, const QString& type, const QString& desc) const
+{
+    return QString("%1(%2) - %3").arg(name, type, desc);  // 【返回】格式化描述
 }

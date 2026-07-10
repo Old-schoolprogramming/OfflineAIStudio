@@ -1,98 +1,95 @@
-#ifndef SECURITYMANAGER_H
-#define SECURITYMANAGER_H
+/**
+ * @file securitymanager.h
+ * @brief 安全管理器 —— 系统安全的"守门人"
+ *
+ * @details
+ * SecurityManager 负责审查和过滤可能危害系统的用户输入和操作。
+ * 在 AI 直接控制本地系统的场景中，安全检查至关重要。
+ *
+ * 核心功能：
+ * 1. isCommandAllowed() —— 检查命令是否允许执行
+ * 2. sanitizePath() —— 清理和验证文件路径
+ *
+ * 安全策略：
+ * - 黑名单机制：禁止执行危险命令（rm -rf、format、dd 等）
+ * - 白名单机制：允许安全的常用命令（mkdir、echo、git、python 等）
+ * - 路径检查：防止目录遍历攻击（../）
+ * - 大小写不敏感匹配：防止绕过检查（如 Rm、FoRmAt）
+ *
+ * @note 当前实现是单层过滤，未来可考虑添加多层安全策略（如正则匹配、沙箱执行等）。
+ */
 
-#include <QString>
-#include <QVariantMap>
-#include <QList>
+#ifndef SECURITYMANAGER_H  // 【条件编译】防止头文件被重复包含
+#define SECURITYMANAGER_H  // 【宏定义】标记该文件已被包含
+
+#include <QString>     // 【引入】Qt字符串类
+#include <QStringList> // 【引入】Qt字符串列表类
 
 /**
- * @brief 安全管理器 - 提供全局安全检查和参数验证
+ * @brief 安全管理器
  *
- * SecurityManager提供以下安全功能：
- * - 参数验证：检查必填参数是否存在、类型是否正确
- * - 路径安全检查：防止路径遍历攻击（如 ../../）
- * - 权限检查：检查文件/目录访问权限
- * - 命令安全：检查命令是否包含危险操作符
+ * SecurityManager 是纯工具类（无 QObject 继承），不管理任何状态。
+ * 所有方法都是静态的，可以直接调用，无需创建实例。
+ *
+ * 使用示例：
+ *   if (SecurityManager::isCommandAllowed("rm -rf /")) {
+ *       // 不会执行到这里，因为 rm 在黑名单中
+ *   }
  */
-class SecurityManager
+class SecurityManager  // 【类声明】纯静态工具类
 {
 public:
     /**
-     * @brief 验证参数是否完整
-     * @param args 参数映射
-     * @param requiredParams 必填参数列表
-     * @return 验证结果，包含success和error字段
+     * @brief 检查命令是否允许执行
+     * @param command 要检查的命令字符串
+     * @return true 如果命令被允许执行
+     *
+     * @implementation
+     * 1. 提取命令中的第一个词（主命令）
+     * 2. 将主命令转为小写
+     * 3. 检查是否在禁止列表中（黑名单匹配）
+     * 4. 检查是否在允许列表中（白名单匹配）
+     * 5. 如果在黑名单中 → 返回 false
+     * 6. 如果在白名单中 → 返回 true
+     * 7. 如果都不在 → 默认返回 false（拒绝未知命令）
+     *
+     * @note 采用"默认拒绝"策略：未知命令一律不允许执行，防止绕过。
      */
-    static QVariantMap validateParams(const QVariantMap& args, const QList<QString>& requiredParams);
+    static bool isCommandAllowed(const QString& command);  // 【静态方法】检查命令安全性
 
     /**
-     * @brief 验证路径安全性
-     * @param path 要检查的路径
-     * @param allowParent 是否允许父目录访问
-     * @return 验证结果，包含success、error和sanitizedPath字段
+     * @brief 清理和验证文件路径
+     * @param path 要清理的文件路径
+     * @return 清理后的安全路径
+     *
+     * @implementation
+     * 1. 将反斜杠统一为正斜杠（Qt 跨平台兼容）
+     * 2. 检测并拒绝路径中包含 ".." 的目录遍历攻击
+     * 3. 检测并拒绝绝对路径中的系统关键目录（如 C:\Windows、/etc）
+     * 4. 返回清理后的路径
+     *
+     * @note 如果路径包含危险内容，返回空字符串表示拒绝。
      */
-    static QVariantMap validatePath(const QString& path, bool allowParent = false);
-
-    /**
-     * @brief 检查文件是否可读取
-     * @param path 文件路径
-     * @return 检查结果
-     */
-    static QVariantMap checkReadPermission(const QString& path);
-
-    /**
-     * @brief 检查文件是否可写入
-     * @param path 文件路径
-     * @return 检查结果
-     */
-    static QVariantMap checkWritePermission(const QString& path);
-
-    /**
-     * @brief 检查目录是否可访问
-     * @param path 目录路径
-     * @return 检查结果
-     */
-    static QVariantMap checkDirectoryAccess(const QString& path);
-
-    /**
-     * @brief 验证命令安全性
-     * @param command 命令字符串
-     * @param allowedCommands 允许的命令列表
-     * @return 验证结果
-     */
-    static QVariantMap validateCommand(const QString& command, const QStringList& allowedCommands);
-
-    /**
-     * @brief 检查是否为危险命令
-     * @param command 命令字符串
-     * @return true表示危险命令
-     */
-    static bool isDangerousCommand(const QString& command);
-
-    /**
-     * @brief 清理文件名（移除非法字符）
-     * @param fileName 原始文件名
-     * @return 清理后的文件名
-     */
-    static QString sanitizeFileName(const QString& fileName);
+    static QString sanitizePath(const QString& path);  // 【静态方法】清理文件路径
 
 private:
     /**
-     * @brief 检查路径是否包含路径遍历
-     * @param path 路径字符串
-     * @return true表示包含路径遍历
+     * @brief 禁止执行的命令列表（黑名单）
+     * @return 危险命令列表
+     *
+     * @note 这些命令可能导致数据丢失、系统损坏或安全漏洞。
+     *       包括但不限于：删除、格式化、分区、直接写磁盘等。
      */
-    static bool containsPathTraversal(const QString& path);
+    static QStringList forbiddenCommands();  // 【静态私有方法】获取黑名单命令列表
 
     /**
-     * @brief 获取危险命令列表
+     * @brief 允许执行的命令列表（白名单）
+     * @return 安全命令列表
+     *
+     * @note 这些命令被认为是相对安全的日常操作。
+     *       包括但不限于：文件操作、目录操作、版本控制、代码执行等。
      */
-    static QStringList dangerousCommands();
-
-    /**
-     * @brief 获取危险操作符列表
-     */
-    static QStringList dangerousOperators();
+    static QStringList allowedCommands();  // 【静态私有方法】获取白名单命令列表
 };
 
-#endif
+#endif // SECURITYMANAGER_H  // 【条件编译结束】

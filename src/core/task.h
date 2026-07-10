@@ -1,146 +1,131 @@
 /**
  * @file task.h
- * @brief Multi-Agent 执行引擎的数据结构定义
+ * @brief 任务数据结构 —— 整个系统的数据契约
  *
  * @details
- * 本文件定义了 Multi-Agent 调度系统的核心数据结构，包括：
- * - StepStatus: 步骤执行状态枚举，描述一个步骤在生命周期中的不同阶段
- * - TaskStep:  单个执行步骤的完整描述，包含工具调用信息、参数、执行结果等
- * - TaskPlan:  由大模型生成的完整执行计划，包含一组有序的 TaskStep
+ * 本文件定义了 Multi-Agent 系统中所有核心数据结构，
+ * 是 LLM、Planner、TaskScheduler、UI 之间的"数据契约"。
  *
- * 这些数据结构是"大模型决策 + C++ 调度执行"架构的数据载体。
- * LLM 生成的 JSON 计划被解析为 TaskPlan，然后由 TaskScheduler 逐步执行每个 TaskStep。
+ * 核心数据结构：
+ * 1. StepStatus —— 步骤执行状态枚举（Pending/Running/Completed/Failed）
+ * 2. TaskStep —— 单个执行步骤（包含 agent、tool、args、状态、时间等）
+ * 3. TaskPlan —— 完整的执行计划（包含目标、步骤列表）
+ *
+ * 设计特点：
+ * - 使用 struct 而非 class：这些数据结构是纯数据载体，没有复杂行为
+ * - 使用 Qt 类型（QString、QVariantMap、QDateTime）：便于与 Qt 框架集成
+ * - 可安全复制：不含指针，深拷贝和浅拷贝效果相同
+ * - 可序列化：便于日志记录、网络传输、状态持久化
+ *
+ * @note 这些数据结构是"值语义"的，可以自由复制和传递。
  */
 
-#ifndef TASK_H
-#define TASK_H
+#ifndef TASK_H  // 【条件编译】防止头文件被重复包含
+#define TASK_H  // 【宏定义】标记该文件已被包含
 
-#include <QString>
-#include <QList>
-#include <QVariantMap>
-#include <QDateTime>
+#include <QString>     // 【引入】Qt字符串类
+#include <QVariantMap> // 【引入】Qt变体映射类，用于键值对参数
+#include <QDateTime>   // 【引入】Qt日期时间类，用于记录执行时间
+#include <QList>       // 【引入】Qt列表容器
 
 /**
  * @brief 步骤执行状态枚举
  *
- * 每个 TaskStep 在其生命周期中会依次经历以下状态之一：
- * - Pending:   初始状态，等待调度器执行
- * - Running:   当前正在被某个 Agent 执行
- * - Completed: Agent 成功完成该步骤，结果已收集
- * - Failed:    Agent 执行失败，error 字段包含失败原因
- * - Skipped:   该步骤被跳过（当前未使用，为后续条件分支预留）
+ * 描述一个 TaskStep 在其生命周期中的当前状态。
+ * 状态转换图：
+ *   Pending → Running → Completed
+ *                      → Failed
+ *
+ * Pending：步骤已创建，尚未开始执行
+ * Running：步骤正在执行中
+ * Completed：步骤已成功完成
+ * Failed：步骤执行失败（错误信息保存在 TaskStep::error 中）
  */
-enum class StepStatus {
-    Pending,    ///< 等待执行
-    Running,    ///< 正在执行
-    Completed,  ///< 执行成功完成
-    Failed,     ///< 执行失败
-    Skipped     ///< 被跳过（预留）
+enum class StepStatus {  // 【枚举类】C++11强类型枚举
+    Pending,    // 【枚举值】待执行：步骤已创建，等待调度
+    Running,    // 【枚举值】执行中：步骤正在被Agent执行
+    Completed,  // 【枚举值】已完成：步骤执行成功
+    Failed      // 【枚举值】已失败：步骤执行出错
 };
 
 /**
- * @brief 单个执行步骤的数据结构
+ * @brief 单条执行步骤
  *
- * @details
- * TaskStep 是 Multi-Agent 执行的最小单元。一个大模型生成的任务会被分解为多个
- * TaskStep，每个 TaskStep 指定了：
- * 1. 使用哪个工具（tool）
- * 2. 传递给工具的参数（args）
- * 3. 由哪个 Agent 执行（agent，作为建议字段）
- * 4. 步骤描述（description，用于 UI 展示）
+ * TaskStep 是执行计划的最小单元，对应大模型规划 JSON 中的一个对象：
+ * { "step_id": 1, "agent": "ComputerAgent", "tool": "runCommand",
+ *   "args": {"command": "mkdir test"}, "description": "创建目录" }
  *
- * 当 TaskScheduler 执行该步骤时，会填充 output、error、startTime、endTime 等
- * 运行时字段，并通过信号通知 UI 层更新展示。
+ * 除规划信息外，还包含执行过程中的运行时状态：
+ * - status：当前执行状态
+ * - startTime / endTime：执行起止时间
+ * - output：执行输出结果
+ * - error：错误信息（如果失败）
  */
-struct TaskStep {
-    int         stepId;       ///< 步骤编号，从 1 开始递增，用于 UI 列表中的标识
-    QString     agent;        ///< 建议使用的 Agent 名称，由大模型在生成计划时指定
-    QString     tool;         ///< 工具名称，TaskScheduler 通过此字段查找对应的 Agent
-    QVariantMap args;         ///< 工具参数，键值对形式，由大模型根据工具定义生成
-    QString     description;  ///< 步骤描述，中文说明该步骤的目标，用于 UI 展示
-    StepStatus  status;       ///< 当前执行状态，调度器在执行过程中动态更新
-    QString     output;       ///< 执行成功后的输出结果，由 Agent 的 executeTool() 返回
-    QString     error;        ///< 执行失败时的错误信息，由 Agent 或调度器填充
-    QDateTime   startTime;    ///< 步骤开始执行的时间戳，调度器在执行前填充
-    QDateTime   endTime;      ///< 步骤执行完成的时间戳，调度器在完成后填充
+struct TaskStep {  // 【结构体】单个执行步骤
+    int stepId = 0;              // 【成员】步骤编号，从1开始递增，用于标识和排序
+    QString agent;               // 【成员】执行该步骤的Agent名称（如"ComputerAgent"）
+    QString tool;                // 【成员】要调用的工具名称（如"runCommand"）
+    QVariantMap args;            // 【成员】工具参数，键值对形式（如{"command": "mkdir test"}）
+    QString description;         // 【成员】步骤描述，用于UI展示（如"创建项目目录"）
+
+    StepStatus status = StepStatus::Pending;  // 【成员】当前执行状态，默认为Pending
+    QDateTime startTime;         // 【成员】开始执行时间，执行前为空
+    QDateTime endTime;           // 【成员】执行结束时间，执行前为空
+    QString output;              // 【成员】执行输出结果，成功后填充
+    QString error;               // 【成员】错误信息，失败后填充
 
     /**
-     * @brief 默认构造函数
-     *
-     * 将 stepId 初始化为 0，status 初始化为 Pending。
-     * 其他字段由 Planner 在解析 JSON 时填充。
+     * @brief 判断步骤是否已完成（无论成功或失败）
+     * @return true 如果状态是 Completed 或 Failed
      */
-    TaskStep()
-        : stepId(0), status(StepStatus::Pending) {}
-
-    /**
-     * @brief 将 StepStatus 枚举转换为可读的字符串
-     * @return 状态对应的英文小写字符串（pending/running/completed/failed/skipped）
-     *
-     * @note 此方法主要用于日志记录和调试输出，UI 层使用 statusIcon() 和 statusColor() 展示
-     */
-    QString statusToString() const {
-        switch (status) {
-            case StepStatus::Pending:   return "pending";
-            case StepStatus::Running:   return "running";
-            case StepStatus::Completed: return "completed";
-            case StepStatus::Failed:    return "failed";
-            case StepStatus::Skipped:   return "skipped";
-        }
-        return "unknown";
+    bool isFinished() const {  // 【方法】检查步骤是否已结束
+        return status == StepStatus::Completed || status == StepStatus::Failed;  // 【返回】是否已完成或失败
     }
 };
 
 /**
- * @brief 完整执行计划的数据结构
+ * @brief 完整的执行计划
  *
- * @details
- * TaskPlan 是 LLM 规划层的输出产物，由 Planner 从 JSON 解析而来。
- * 一个 TaskPlan 代表一个完整的用户任务，包含一组有序的执行步骤。
+ * TaskPlan 包含一个目标（goal）和一系列有序的步骤（steps）。
+ * 它对应大模型规划 JSON 的完整内容，是 Planner 的输出、TaskScheduler 的输入。
  *
- * TaskScheduler 接收 TaskPlan 后，按 steps 列表的顺序逐个执行，
- * 并在执行过程中通过信号通知 UI 层更新 TaskListPanel 和 OutputPanel。
+ * 使用示例：
+ *   TaskPlan plan;
+ *   plan.goal = "创建一个Qt项目";
+ *   plan.steps.append(step1);
+ *   plan.steps.append(step2);
  */
-struct TaskPlan {
-    QString         planId;     ///< 计划唯一标识符，由 Planner 使用 QUuid 自动生成
-    QString         goal;       ///< 任务目标描述，通常取用户原始输入作为目标
-    QList<TaskStep> steps;      ///< 执行步骤列表，按 step_id 顺序排列
-    QDateTime       createdAt;  ///< 计划创建时间，用于日志和性能分析
+struct TaskPlan {  // 【结构体】完整执行计划
+    QString goal;                // 【成员】计划目标，通常为用户原始输入或任务描述
+    QList<TaskStep> steps;       // 【成员】有序步骤列表，按stepId顺序执行
 
     /**
-     * @brief 默认构造函数
-     *
-     * 自动将 createdAt 设置为当前系统时间。
-     * planId 和 goal 由 Planner 在解析 JSON 后填充。
+     * @brief 获取计划的总步骤数
+     * @return 步骤数量
      */
-    TaskPlan() : createdAt(QDateTime::currentDateTime()) {}
+    int totalSteps() const {  // 【方法】获取总步骤数
+        return steps.size();  // 【返回】步骤列表的大小
+    }
 
     /**
-     * @brief 获取总步骤数
-     * @return steps 列表的大小
+     * @brief 获取已完成（成功或失败）的步骤数
+     * @return 已完成步骤数量
      */
-    int totalSteps() const { return steps.size(); }
-
-    /**
-     * @brief 获取已完成（包括成功和失败）的步骤数
-     * @return 状态为 Completed 或 Failed 的步骤数量
-     *
-     * @note 此方法用于计算 UI 进度条的百分比
-     */
-    int completedSteps() const {
-        int count = 0;
-        for (const auto& step : steps) {
-            if (step.status == StepStatus::Completed || step.status == StepStatus::Failed)
-                count++;
+    int completedSteps() const {  // 【方法】获取已完成步骤数
+        int count = 0;  // 【计数】初始化计数器
+        for (const auto& step : steps) {  // 【遍历】所有步骤
+            if (step.isFinished()) count++;  // 【判断】如果步骤已结束，计数+1
         }
-        return count;
+        return count;  // 【返回】已完成步骤数
     }
 
     /**
      * @brief 判断计划是否全部执行完毕
-     * @return true 当 completedSteps() == totalSteps()
+     * @return true 如果所有步骤都已完成
      */
-    bool isComplete() const { return completedSteps() == totalSteps(); }
+    bool isComplete() const {  // 【方法】检查计划是否全部完成
+        return completedSteps() == totalSteps();  // 【返回】已完成数是否等于总数
+    }
 };
 
-#endif // TASK_H
+#endif // TASK_H  // 【条件编译结束】

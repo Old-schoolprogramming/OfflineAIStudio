@@ -79,3 +79,11 @@ thirdparty/
 config.json
 settings.ini
 *.ini
+
+# Doc temp files
+doc/_diagrams/
+doc/~$*
+*.tmp
+
+# Compile logs
+compile.log*

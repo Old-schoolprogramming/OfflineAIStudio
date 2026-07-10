@@ -1,3 +1,14 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: e5ed4f00f0c13ac2041da5048ba13d1d_d519d7e77b7e11f18157525400826444
+    ReservedCode1: 9+LUN77bquEhsML+q6TIeTOXnTNo2H5wArum5Tt8eiFt0/0IFosmA/2wXKTI8X1rlDW0ken6LaON3HNoJpdeU0rdVnZkRklU2CayNRjPKWvtsTd53vBS6A9g4/g6glDJqyl/WMrIdWhCHMyoHPUnA/Br3Lh8jZSqYxBPFFYyvdCL0mEL5TlUaj/lLwE=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: e5ed4f00f0c13ac2041da5048ba13d1d_d519d7e77b7e11f18157525400826444
+    ReservedCode2: 9+LUN77bquEhsML+q6TIeTOXnTNo2H5wArum5Tt8eiFt0/0IFosmA/2wXKTI8X1rlDW0ken6LaON3HNoJpdeU0rdVnZkRklU2CayNRjPKWvtsTd53vBS6A9g4/g6glDJqyl/WMrIdWhCHMyoHPUnA/Br3Lh8jZSqYxBPFFYyvdCL0mEL5TlUaj/lLwE=
+---
+
 # OfflineAIStudio
 
 > 基于 Qt 6 / C++20 的离线 AI 开发工作室 —— 多 Agent 协作、本地优先、隐私安全。
@@ -20,13 +31,16 @@
 ### 核心架构
 
 - **两阶段执行模式**：LLM 生成结构化计划（JSON）→ C++ TaskScheduler 调度本地 Agent 执行，大模型不直接调用工具，安全可控
-- **多 Agent 协作**：FileAgent / ComputerAgent / SearchAgent / CodeAgent 各司其职，由 Orchestrator 统一编排
+- **多 Agent 协作**：FileAgent / ComputerAgent / SearchAgent / CodeAgent / TextAgent 各司其职，由 Orchestrator 统一编排
+- **文件上传**：支持多种文件格式（文本、代码、文档、图像、表格等），可附加文件进行提问
+- **技能导入**：支持从本地文件夹导入 Skill 配置，可在页面中选择使用
 - **流式输出**：SSE 实时滚动显示 LLM 响应和 Agent 调用日志
 - **对话记忆**：多轮对话历史，支持最大 20 轮上下文
 - **多会话管理**：会话切换时自动加载对应历史记录
 - **Markdown 渲染**：代码高亮 + 富文本显示
 - **深色 / 浅色主题**：Fusion 风格 + ThemeManager 全局样式表
 - **配置持久化**：API 地址、模型名称等自动保存和加载
+- **反思重试**：步骤失败时自动反思并重规划执行
 
 ### FileAgent — 文件操作
 
@@ -61,9 +75,27 @@
 - 项目创建（CMake / Qt / Python 模板）
 - 代码生成与编译
 - 程序运行与调试
-- 代码分析与统计
+- 代码分析与统计（行数统计、注释比例、编码检测）
 - 依赖检查与项目清理
 - 代码格式化
+- 函数/类定义查找
+- TODO/FIXME 标记搜索
+- 单元测试生成
+- 代码重构（批量重命名）
+- 接口头文件提取
+
+### TextAgent — 文本处理
+
+- Base64 编码/解码
+- URL 编码/解码
+- 哈希计算（MD5、SHA1、SHA256）
+- 文本统计（字数、行数、字符数）
+- 文本格式化（JSON美化、缩进调整）
+- 文本转换（大小写、去除空白、反转）
+- 正则表达式匹配与替换
+- 时间戳转换
+- UUID 生成
+- Markdown 转 HTML
 
 ---
 
@@ -178,7 +210,8 @@ OfflineAIStudio/
 │   │   ├── fileagent.h/cpp       # 文件操作 Agent
 │   │   ├── computeragent.h/cpp   # 系统操作 Agent
 │   │   ├── searchagent.h/cpp     # 搜索 Agent
-│   │   └── codeagent.h/cpp       # 代码开发 Agent
+│   │   ├── codeagent.h/cpp       # 代码开发 Agent
+│   │   └── textagent.h/cpp       # 文本处理 Agent
 │   ├── ui/                       # UI 组件
 │   │   ├── mainwindow.h/cpp      # 主窗口
 │   │   ├── chatpage.h/cpp        # 聊天页面
@@ -194,6 +227,10 @@ OfflineAIStudio/
 │   └── mainwindow.h/cpp          # 主窗口实现
 ├── resources/
 │   └── styles.qrc                # QSS 样式资源
+├── doc/                          # 技术设计文档
+│   ├── 技术设计文档.md            # Markdown 格式文档
+│   ├── generate_docx.py          # DOCX 生成脚本
+│   └── OfflineAIStudio_技术设计文档.docx  # DOCX 格式文档
 ├── CMakeLists.txt                # CMake 构建配置
 ├── OfflineAIStudio.pro           # qmake 备选构建配置
 ├── screenshot.png                # 应用截图
@@ -237,6 +274,31 @@ OfflineAIStudio/
 
 ---
 
+## 代码统计
+
+| 模块 | 行数（含注释） | 说明 |
+|------|--------------|------|
+| Agents | ~5,077 | 5 个 Agent（File/Computer/Search/Code/Text） |
+| Core | ~4,787 | Orchestrator、TaskScheduler、Planner、LLMClient 等 |
+| UI | ~8,593 | MainWindow、ChatPage、ThemeManager 等 |
+| **总计** | **~18,482** | C++/Qt 6 |
+
+---
+
+## 技术文档
+
+项目包含完整的技术设计文档（`doc/` 目录），涵盖：
+
+- 系统架构设计（两阶段执行模型）
+- 类图、流程图、时序图、状态图（共 15 张）
+- 安全架构（纵深防御策略）
+- Agent 能力矩阵与工具路由
+- 信号槽通信机制
+
+文档提供 Markdown 和 DOCX 两种格式。
+
+---
+
 ## 许可证
 
 本项目基于 [MIT License](LICENSE) 开源。
@@ -250,3 +312,4 @@ OfflineAIStudio/
 3. 提交改动 (`git commit -m 'Add amazing feature'`)
 4. 推送到分支 (`git push origin feature/amazing-feature`)
 5. 创建 Pull Request
+*（内容由AI生成，仅供参考）*

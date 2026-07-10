@@ -14,11 +14,11 @@
  * 3. 启动执行（startExecution）
  * 4. 逐个步骤执行（executeNextStep）
  *    a. 更新步骤状态为 Running
-    *    b. 查找拥有该工具的 Agent
-    *    c. 调用 Agent::executeTool()
-    *    d. 根据返回结果更新状态（Completed / Failed）
-    *    e. 发射信号通知 UI
-    *    f. 递归调用 executeNextStep() 执行下一步
+ *    b. 查找拥有该工具的 Agent
+ *    c. 调用 Agent::executeTool()
+ *    d. 根据返回结果更新状态（Completed / Failed）
+ *    e. 发射信号通知 UI
+ *    f. 递归调用 executeNextStep() 执行下一步
  * 5. 全部完成后发射 planCompleted
  *
  * 执行特点：
@@ -28,14 +28,14 @@
  * - 失败继续：单个步骤失败不会终止整个计划，后续步骤仍会继续执行
  */
 
-#ifndef TASKSCHEDULER_H
-#define TASKSCHEDULER_H
+#ifndef TASKSCHEDULER_H  // 【条件编译】防止头文件被重复包含
+#define TASKSCHEDULER_H  // 【宏定义】标记该文件已被包含
 
-#include "task.h"
-#include "agent.h"
-#include <QObject>
-#include <QList>
-#include <QString>
+#include "task.h"    // 【引入】任务数据结构头文件（TaskPlan, TaskStep, StepStatus）
+#include "agent.h"   // 【引入】Agent基类头文件
+#include <QObject>   // 【引入】Qt对象基类
+#include <QList>     // 【引入】Qt列表容器
+#include <QString>   // 【引入】Qt字符串类
 
 /**
  * @brief C++ 任务调度引擎
@@ -51,9 +51,9 @@
  * @note 如果 Agent 的执行可能耗时较长（如大文件读写、复杂命令），
  *       后续可以考虑将 Agent 执行移至独立工作线程。
  */
-class TaskScheduler : public QObject
+class TaskScheduler : public QObject  // 【类声明】继承QObject以使用信号槽
 {
-    Q_OBJECT
+    Q_OBJECT  // 【Qt宏】启用元对象系统
 
 public:
     /**
@@ -62,12 +62,12 @@ public:
      *
      * 初始化所有内部状态：清空 Agent 列表、重置步骤索引、标记为未运行。
      */
-    explicit TaskScheduler(QObject *parent = nullptr);
+    explicit TaskScheduler(QObject *parent = nullptr);  // 【构造函数】explicit防止隐式转换
 
     /**
      * @brief 析构函数
      */
-    ~TaskScheduler();
+    ~TaskScheduler();  // 【析构函数】释放资源
 
     /**
      * @brief 注册一个可用的 Agent
@@ -80,7 +80,7 @@ public:
      *
      * @note 通常在应用启动时由 Orchestrator 调用，将所有 Agent 注册进来。
      */
-    void registerAgent(Agent* agent);
+    void registerAgent(Agent* agent);  // 【方法】注册Agent到调度系统
 
     /**
      * @brief 设置当前要执行的计划
@@ -90,7 +90,7 @@ public:
      * 设置计划后会重置步骤索引为 0，并发射 planReceived 信号。
      * 此时计划尚未开始执行，需要调用 startExecution() 启动。
      */
-    void setPlan(const TaskPlan& plan);
+    void setPlan(const TaskPlan& plan);  // 【方法】设置执行计划
 
     /**
      * @brief 启动执行当前计划
@@ -102,7 +102,7 @@ public:
      *
      * 启动后会重置步骤索引为 0，标记为运行中，然后调用 executeNextStep()。
      */
-    void startExecution();
+    void startExecution();  // 【方法】启动计划执行
 
     /**
      * @brief 停止执行
@@ -114,13 +114,13 @@ public:
      * 注意：此方法不会中断正在执行的步骤（因为步骤在同步执行），
      * 只会阻止后续步骤的执行。当前正在执行的步骤会继续完成。
      */
-    void stopExecution();
+    void stopExecution();  // 【方法】停止后续步骤执行
 
     /**
      * @brief 判断当前是否正在执行计划
      * @return true 当有计划正在执行中
      */
-    bool isRunning() const;
+    bool isRunning() const;  // 【方法】查询执行状态
 
     /**
      * @brief 获取当前正在执行的计划
@@ -128,16 +128,16 @@ public:
      *
      * @note 返回的是副本，修改返回值不会影响调度器内部状态。
      */
-    TaskPlan currentPlan() const;
+    TaskPlan currentPlan() const;  // 【方法】获取当前计划副本
 
-signals:
+signals:  // 【Qt关键字】信号声明
     /**
      * @brief 收到新的执行计划
      * @param plan 解析后的 TaskPlan
      *
      * 在 setPlan() 被调用后发射，UI 层可据此初始化任务列表。
      */
-    void planReceived(const TaskPlan& plan);
+    void planReceived(const TaskPlan& plan);  // 【信号】通知UI收到新计划
 
     /**
      * @brief 某个步骤开始执行
@@ -145,7 +145,7 @@ signals:
      *
      * 在步骤状态被设为 Running 后发射，UI 可将对应步骤图标更新为"执行中"。
      */
-    void stepStarted(int stepId);
+    void stepStarted(int stepId);  // 【信号】通知UI步骤开始
 
     /**
      * @brief 某个步骤产生输出
@@ -156,21 +156,21 @@ signals:
      * - 首次发射步骤头信息（包含 Agent、Tool、参数等）
      * - 随后发射 Agent 的实际执行输出
      */
-    void stepOutput(int stepId, const QString& output);
+    void stepOutput(int stepId, const QString& output);  // 【信号】通知UI步骤输出内容
 
     /**
      * @brief 某个步骤成功完成
      * @param stepId 完成的步骤编号
      * @param result Agent 返回的执行结果（包含 success=true、result、error 等）
      */
-    void stepCompleted(int stepId, const QVariantMap& result);
+    void stepCompleted(int stepId, const QVariantMap& result);  // 【信号】通知UI步骤成功完成
 
     /**
      * @brief 某个步骤执行失败
      * @param stepId 失败的步骤编号
      * @param error 错误描述信息
      */
-    void stepFailed(int stepId, const QString& error);
+    void stepFailed(int stepId, const QString& error);  // 【信号】通知UI步骤执行失败
 
     /**
      * @brief 整个计划执行完成（所有步骤已处理）
@@ -178,16 +178,16 @@ signals:
      *
      * 无论步骤成功或失败，所有步骤处理完毕后都会发射此信号。
      */
-    void planCompleted(const TaskPlan& plan);
+    void planCompleted(const TaskPlan& plan);  // 【信号】通知UI所有步骤执行完毕
 
     /**
      * @brief 执行被用户中断
      *
      * 在 stopExecution() 被调用后发射。
      */
-    void executionStopped();
+    void executionStopped();  // 【信号】通知UI执行被用户停止
 
-private slots:
+private slots:  // 【Qt关键字】私有槽函数
     /**
      * @brief 执行下一个步骤
      *
@@ -209,9 +209,9 @@ private slots:
      * - 所有步骤执行完毕（m_currentStepIndex >= steps.size()）
      * - 用户调用了 stopExecution()（m_shouldStop 为 true）
      */
-    void executeNextStep();
+    void executeNextStep();  // 【槽】核心调度逻辑，递归执行每个步骤
 
-private:
+private:  // 【访问修饰符】私有成员
     /**
      * @brief 按 Agent 名称查找已注册的 Agent
      * @param agentName 要查找的 Agent 名称（不区分大小写）
@@ -220,7 +220,7 @@ private:
      * @note 当前未被使用，因为调度器采用"按工具路由"策略。
      *       保留此方法为未来扩展（如大模型指定特定 Agent 时使用）。
      */
-    Agent* findAgentByName(const QString& agentName);
+    Agent* findAgentByName(const QString& agentName);  // 【私有方法】按名称查找Agent
 
     /**
      * @brief 按工具名称查找拥有该工具的 Agent
@@ -234,7 +234,7 @@ private:
      * @note 如果多个 Agent 拥有同名工具，返回第一个匹配的 Agent。
      *       为避免歧义，建议不同 Agent 的工具名称保持唯一。
      */
-    Agent* findAgentForTool(const QString& toolName);
+    Agent* findAgentForTool(const QString& toolName);  // 【私有方法】按工具查找Agent
 
     /**
      * @brief 构建步骤执行的日志头信息
@@ -243,13 +243,13 @@ private:
      *
      * @note 此字符串会被 emit stepOutput() 发送到 UI 的输出面板展示。
      */
-    QString buildStepLogHeader(const TaskStep& step);
+    QString buildStepLogHeader(const TaskStep& step);  // 【私有方法】构建步骤日志头
 
-    QList<Agent*> m_agents;      ///< 已注册的 Agent 列表（TaskScheduler 不拥有所有权）
-    TaskPlan m_currentPlan;      ///< 当前正在执行的计划
-    int m_currentStepIndex;      ///< 当前执行的步骤索引（0-based）
-    bool m_isRunning;            ///< 是否正在执行中
-    bool m_shouldStop;           ///< 用户是否请求停止（中断标志）
+    QList<Agent*> m_agents;      // 【成员变量】已注册的 Agent 列表（TaskScheduler 不拥有所有权）
+    TaskPlan m_currentPlan;      // 【成员变量】当前正在执行的计划
+    int m_currentStepIndex;      // 【成员变量】当前执行的步骤索引（从0开始）
+    bool m_isRunning;            // 【成员变量】是否正在执行中
+    bool m_shouldStop;           // 【成员变量】用户是否请求停止（中断标志）
 };
 
-#endif // TASKSCHEDULER_H
+#endif // TASKSCHEDULER_H  // 【条件编译结束】

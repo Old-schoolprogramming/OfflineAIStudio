@@ -1,125 +1,94 @@
 /**
  * @file promptbuilder.h
- * @brief Prompt 构建器 —— 构造发给大模型的提示词
+ * @brief 系统提示词构建器 —— 控制大模型的"使用说明书"
  *
  * @details
- * PromptBuilder 负责将系统的运行时信息（Agent 列表、工具描述、用户输入）
- * 按照预设模板组装成大模型能理解的 Prompt 文本。
+ * PromptBuilder 负责为不同阶段构建适合大模型的提示词（Prompt）。
+ * 它是连接"人类需求"与"机器指令"的桥梁，提示词的质量直接影响大模型的输出质量。
  *
- * 本系统使用两种 Prompt 模式：
+ * 核心功能：
+ * 1. buildPlanningSystemPrompt() —— 规划阶段系统提示词
+ *    向大模型解释：你是谁、你有啥工具、怎么返回 JSON 计划
+ * 2. buildPlanningUserPrompt() —— 规划阶段用户提示词
+ *    告诉大模型：用户的请求是啥、基于什么上下文
+ * 3. buildToolDefinitionPrompt() —— 工具定义 Prompt（当前未使用）
+ *    为每个工具生成包含名称、描述、参数 Schema 的文本描述
  *
- * 模式一 —— 普通对话模式（v1.0 遗留，兼容保留）：
- *   用于简单问答场景，不需要工具调用。
- *   buildSystemPrompt() + buildUserPrompt() + buildToolResultPrompt()
- *
- * 模式二 —— 规划模式（v2.0 新增，核心模式）：
- *   用于生成 JSON 执行计划。
- *   buildPlanningSystemPrompt() + buildPlanningUserPrompt()
- *
- * 高质量的 Prompt 是大模型正确工作的关键。
- * 规划模式下的系统提示词需要精确描述 JSON 格式、字段含义、生成规则，
- * 使 LLM 能够输出可被 Planner 正确解析的结构化数据。
+ * 设计原则：
+ * - 提示词越清晰、越结构化，大模型的输出就越可控
+ * - 强制 JSON 格式输出，方便程序解析
+ * - 包含"所有可用工具"的完整描述，大模型才能做出正确的工具选择
+ * - 大量示例（few-shot learning）降低 7B 模型的理解难度
  */
 
-#ifndef PROMPTBUILDER_H
-#define PROMPTBUILDER_H
+#ifndef PROMPTBUILDER_H  // 【条件编译】防止头文件被重复包含
+#define PROMPTBUILDER_H  // 【宏定义】标记该文件已被包含
 
-#include <QString>
-#include <QList>
+#include <QString>     // 【引入】Qt字符串类
+#include <QList>       // 【引入】Qt列表容器
 
-class Agent;
+// 前向声明：避免在头文件中包含 agent.h 的完整定义，减少编译依赖
+class Agent;           // 【前向声明】Agent类，此处只需要指针类型
+class Tool;            // 【前向声明】Tool类
 
 /**
- * @brief Prompt 构建器
+ * @brief 系统提示词构建器
  *
- * PromptBuilder 是无状态类，每次调用根据传入的参数动态构建 Prompt。
- * 所有方法都是纯函数，不依赖内部状态（除格式模板字符串外）。
+ * PromptBuilder 是纯工具类（无 QObject 继承），不管理任何状态，
+ * 所有方法都是 const 的，可多线程安全使用。
  */
-class PromptBuilder
+class PromptBuilder  // 【类声明】纯工具类，无需继承QObject
 {
 public:
     /**
      * @brief 构造函数
      *
-     * 初始化两种模式的格式模板字符串。
+     * 无参构造函数，PromptBuilder 不需要初始化任何状态。
      */
-    PromptBuilder();
+    PromptBuilder();  // 【构造函数】创建PromptBuilder实例
 
     /**
-     * @brief 析构函数
-     */
-    ~PromptBuilder();
-
-    // ==================== 普通对话模式（兼容保留） ====================
-
-    /**
-     * @brief 构建普通对话的系统提示词
-     * @param role AI 扮演的角色描述
-     * @param agents 可用的 Agent 列表
-     * @return 系统提示词文本
-     *
-     * @note 此模式用于 v1.0 的 ReAct 风格交互，v2.0 中主要使用规划模式。
-     */
-    QString buildSystemPrompt(const QString& role, const QList<Agent*>& agents);
-
-    /**
-     * @brief 构建普通对话的用户提示词
-     * @param userQuery 用户的问题或指令
-     * @return 用户提示词文本
-     */
-    QString buildUserPrompt(const QString& userQuery);
-
-    /**
-     * @brief 构建工具执行结果提示词
-     * @param toolName 工具名称
-     * @param result 工具执行结果
-     * @return 结果提示词文本
-     *
-     * @note 用于 v1.0 的 ReAct 循环中，将工具结果反馈给 LLM 继续推理。
-     */
-    QString buildToolResultPrompt(const QString& toolName, const QString& result);
-
-    /**
-     * @brief 构建完整的普通对话 Prompt
-     * @param userQuery 用户问题
-     * @param role AI 角色
-     * @param agents 可用 Agent 列表
-     * @return 完整 Prompt
-     */
-    QString buildFullPrompt(const QString& userQuery, const QString& role, const QList<Agent*>& agents);
-
-    // ==================== 规划模式（v2.0 核心） ====================
-
-    /**
-     * @brief 构建规划模式的系统提示词
-     * @param agents 可用的 Agent 列表
-     * @return 规划专用系统提示词
+     * @brief 构建规划阶段的系统提示词（System Prompt）
+     * @param agents 所有可用的 Agent 列表
+     * @return 完整的系统提示词字符串
      *
      * @details
-     * 系统提示词包含以下内容：
-     * 1. 角色定义：告诉 LLM 它是一个任务规划专家
-     * 2. Agent/工具清单：列出所有可用 Agent 及其工具的详细描述
-     * 3. JSON 格式模板：给出精确的 JSON 输出格式示例
-     * 4. 生成规则：分步、顺序、参数映射、中文描述等要求
-     * 5. 降级说明：如果不需要工具，直接回答而非输出 JSON
+     * 这是最关键的系统提示词，它告诉大模型：
+     * 1. 你是谁（Multi-Agent System Orchestrator）
+     * 2. 你能做什么（各 Agent 的工具能力）
+     * 3. 怎么做事（严格按 plan → tool 的顺序）
+     * 4. 输出格式要求（JSON 数组）
+     * 5. 大量示例（降低 7B 模型的理解门槛）
      *
-     * 这个提示词的质量直接决定了 Planner 能否成功解析 LLM 的输出。
+     * @note 生成 Prompt 的逻辑是"原样"复制的，所以文档内也保留了这份 Prompt 全文，
+     *       方便开发者和 LLM 理解其工作原理。
      */
-    QString buildPlanningSystemPrompt(const QList<Agent*>& agents);
+    QString buildPlanningSystemPrompt(const QList<Agent*>& agents) const;  // 【方法】构建规划系统提示词
 
     /**
-     * @brief 构建规划模式的用户提示词
-     * @param userQuery 用户的原始输入
-     * @return 用户提示词文本
+     * @brief 构建规划阶段的用户提示词（User Prompt）
+     * @param userInput 用户的自然语言输入
+     * @return 包装后的用户提示词
      *
      * @implementation
-     * 简单的格式化："User request: [query]\n\nPlease create an execution plan for this task."
+     * 简单包装用户输入，添加格式说明。
+     * 未来可以在此添加上下文信息、历史记录等。
      */
-    QString buildPlanningUserPrompt(const QString& userQuery);
+    QString buildPlanningUserPrompt(const QString& userInput) const;  // 【方法】构建规划用户提示词
 
-private:
-    QString m_toolCallFormat;  ///< v1.0 工具调用格式模板（如 <tool(args)>）
-    QString m_jsonPlanFormat;  ///< v2.0 JSON 计划格式模板（包含 goal 和 steps 结构）
+    /**
+     * @brief 构建工具定义 Prompt
+     * @param agents 所有可用的 Agent 列表
+     * @return 所有工具的定义文本
+     *
+     * @implementation
+     * 遍历所有 Agent 的所有工具，为每个工具调用 tool->promptDescription()，
+     * 用换行符连接所有描述。
+     *
+     * @note 当前该方法在 buildPlanningSystemPrompt() 中未直接使用，
+     *       而是内联了类似的工具描述生成逻辑。保留此方法为未来重构预留。
+     */
+    QString buildToolDefinitionPrompt(const QList<Agent*>& agents) const;  // 【方法】构建工具定义提示词
 };
 
-#endif // PROMPTBUILDER_H
+#endif // PROMPTBUILDER_H  // 【条件编译结束】
